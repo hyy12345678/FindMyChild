@@ -1,0 +1,58 @@
+# ===== Android =====
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# ===== Kotlin / Java =====
+*.class
+*.jar
+!gradle-wrapper.jar
+
+# ===== Gradle =====
+.gradle/
+build/
+*/build/
+out/
+
+# ===== Android Studio / IntelliJ IDEA =====
+.idea/
+*.iml
+*.iws
+*.ipr
+.navigation/
+captures/
+
+# ===== Keystore =====
+*.jks
+*.keystore
+
+# ===== Local configuration =====
+local.properties
+
+# ===== OS files =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== Log files =====
+*.log
+*.trace
+
+# ===== Kotlin compiler =====
+*.kotlin_module
+
+# ===== Lint =====
+lint-report.html
+lint-results.xml
+
+# ===== Backup files =====
+*~
+*.swp
+*.swo
+*.bak
+
+# ===== Packaging =====
+*.zip
+*.tar.gz
+*.rar

@@ -1,0 +1,86 @@
+[versions]
+kotlin = "2.0.21"
+agp = "8.5.2"
+compose-bom = "2024.09.00"
+hilt = "2.51.1"
+hilt-navigation-compose = "1.2.0"
+navigation-compose = "2.8.0"
+lifecycle = "2.8.5"
+camerax = "1.4.1"
+zxing = "3.5.3"
+play-services-location = "21.3.0"
+okhttp = "4.12.0"
+retrofit = "2.11.0"
+moshi = "1.15.1"
+datastore = "1.1.1"
+coroutines = "1.9.0"
+core-ktx = "1.13.1"
+activity-compose = "1.9.3"
+ksp = "2.0.21-1.0.27"
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+
+[libraries]
+# AndroidX Core
+core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
+activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity-compose" }
+
+# Compose
+compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
+compose-ui = { group = "androidx.compose.ui", name = "ui" }
+compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+compose-material-icons = { group = "androidx.compose.material", name = "material-icons-extended" }
+compose-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+compose-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+
+# Navigation
+navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation-compose" }
+
+# Lifecycle
+lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
+lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "lifecycle" }
+
+# Hilt
+hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
+hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
+hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hilt-navigation-compose" }
+
+# Location
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "play-services-location" }
+
+# CameraX + ZXing
+camerax-core = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+camerax-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+zxing = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+
+# Network
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
+retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
+retrofit-moshi = { group = "com.squareup.retrofit2", name = "converter-moshi", version.ref = "retrofit" }
+moshi = { group = "com.squareup.moshi", name = "moshi-kotlin", version.ref = "moshi" }
+moshi-codegen = { group = "com.squareup.moshi", name = "moshi-kotlin-codegen", version.ref = "moshi" }
+
+# DataStore
+datastore = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+
+# Coroutines
+coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# Ktor Server (relay-server)
+ktor-server-core = { group = "io.ktor", name = "ktor-server-core", version = "3.0.3" }
+ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version = "3.0.3" }
+ktor-server-websockets = { group = "io.ktor", name = "ktor-server-websockets", version = "3.0.3" }
+ktor-serialization-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version = "3.0.3" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.7.3" }
+logback-classic = { group = "ch.qos.logback", name = "logback-classic", version = "1.5.12" }
