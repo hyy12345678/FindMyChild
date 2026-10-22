@@ -19,6 +19,11 @@ import org.robolectric.annotation.Config
  * - 目标未找到时显示"等待位置..."
  * - 目标找到时显示距离和方向
  * - GPS 信号弱时显示精度提示
+ *
+ * 注意：箭头指向属于 Canvas 几何，无法用 Robolectric 做像素级断言
+ * （captureToImage() 需要真实渲染表面）。方向正确性由
+ * `CompassViewUtilTest` 中的 screenAngleFromNorth 用例保证，
+ * 它是刻度盘与箭头共用的唯一几何真值来源。
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -52,7 +57,6 @@ class CompassViewTest {
             distance = 156f,
             bearing = 45f,
             heading = 0f,
-            arrowRotation = 45f,
             lastUpdateTime = System.currentTimeMillis()
         )
 
@@ -63,6 +67,28 @@ class CompassViewTest {
         }
 
         composeTestRule.onNodeWithText("156").assertIsDisplayed()
+        composeTestRule.onNodeWithText("米").assertIsDisplayed()
+    }
+
+    @Test
+    fun `compassView shows kilometers unit beyond 1000m`() {
+        val state = CompassState(
+            isTargetFound = true,
+            distance = 1200f,
+            bearing = 180f,
+            heading = 0f,
+            lastUpdateTime = System.currentTimeMillis()
+        )
+
+        composeTestRule.setContent {
+            FindMyChildTheme {
+                CompassView(state = state)
+            }
+        }
+
+        // 回归：公里距离曾经配着"米"显示成 "1.2 米"
+        composeTestRule.onNodeWithText("1.2").assertIsDisplayed()
+        composeTestRule.onNodeWithText("公里").assertIsDisplayed()
     }
 
     @Test
@@ -72,7 +98,6 @@ class CompassViewTest {
             distance = 30f,
             bearing = 90f,
             heading = 0f,
-            arrowRotation = 90f,
             lastUpdateTime = System.currentTimeMillis()
         )
 
@@ -92,7 +117,6 @@ class CompassViewTest {
             distance = 50f,
             bearing = 0f,
             heading = 0f,
-            arrowRotation = 0f,
             lastUpdateTime = System.currentTimeMillis(),
             locationAccuracy = 35f
         )
@@ -107,33 +131,12 @@ class CompassViewTest {
     }
 
     @Test
-    fun `compassView shows km format for long distances`() {
-        val state = CompassState(
-            isTargetFound = true,
-            distance = 1200f,
-            bearing = 180f,
-            heading = 0f,
-            arrowRotation = 180f,
-            lastUpdateTime = System.currentTimeMillis()
-        )
-
-        composeTestRule.setContent {
-            FindMyChildTheme {
-                CompassView(state = state)
-            }
-        }
-
-        composeTestRule.onNodeWithText("1.2").assertIsDisplayed()
-    }
-
-    @Test
     fun `compassView shows recently updated when just updated`() {
         val state = CompassState(
             isTargetFound = true,
             distance = 100f,
             bearing = 0f,
             heading = 0f,
-            arrowRotation = 0f,
             lastUpdateTime = System.currentTimeMillis()
         )
 

@@ -41,6 +41,7 @@ desktop.ini
 
 # ===== Kotlin compiler =====
 *.kotlin_module
+.kotlin/
 
 # ===== Lint =====
 lint-report.html

@@ -80,12 +80,10 @@ class CompassViewModel @Inject constructor(
 
                     val bearing = calculateBearing.bearing(myLoc, peerLoc)
                     val distance = calculateBearing.distance(myLoc, peerLoc)
-                    val arrowRotation = calculateBearing.normalizeAngle(bearing - heading)
 
                     _compassState.value = CompassState(
                         bearing = bearing,
                         heading = heading,
-                        arrowRotation = arrowRotation,
                         distance = distance,
                         lastUpdateTime = peerLoc.timestamp,
                         isTargetFound = true,

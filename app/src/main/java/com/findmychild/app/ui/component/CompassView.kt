@@ -61,6 +61,22 @@ internal fun shortestAngle(current: Float, target: Float): Float {
 }
 
 /**
+ * 罗盘方位角 → 屏幕夹角的换算，是指南针唯一的几何真值来源。
+ *
+ * 刻度盘和箭头都由它推导：刻度盘取"正北"的屏幕夹角，箭头取"目标"的屏幕夹角。
+ * 过去两处各自写符号（-heading 与 -(bearing - heading)），才出现了箭头东西镜像。
+ *
+ * 约定：返回值是相对"屏幕正上方"的**顺时针**夹角，与 Compose Canvas 的
+ * `rotate(degrees)` 正值方向一致；归一到 (-180, 180]，即最短路径。
+ */
+internal fun screenAngleFromNorth(compassAngle: Float, heading: Float): Float {
+    var diff = (compassAngle - heading) % 360f
+    if (diff > 180f) diff -= 360f
+    if (diff <= -180f) diff += 360f
+    return diff
+}
+
+/**
  * 指南针自定义 Compose 组件。
  * 用 Canvas 绘制刻度盘、方向箭头，以及距离/状态文字。
  *
@@ -77,10 +93,11 @@ fun CompassView(
     modifier: Modifier = Modifier
 ) {
     // 箭头旋转动画（500ms 平滑过渡）
-    // 使用最短路径插值，避免跨越 0°/360° 时反向旋转
-    var arrowDisplayAngle = remember { state.arrowRotation }
-    LaunchedEffect(state.arrowRotation) {
-        arrowDisplayAngle = shortestAngle(arrowDisplayAngle, state.arrowRotation)
+    // 目标角度由 screenAngleFromNorth 统一推导，避免各处自行决定符号
+    val arrowTarget = screenAngleFromNorth(state.bearing, state.heading)
+    var arrowDisplayAngle = remember { arrowTarget }
+    LaunchedEffect(arrowTarget) {
+        arrowDisplayAngle = shortestAngle(arrowDisplayAngle, arrowTarget)
     }
     val animatedArrowRotation by animateFloatAsState(
         targetValue = arrowDisplayAngle,
@@ -90,10 +107,11 @@ fun CompassView(
         )
     )
 
-    // 刻度盘旋转动画（设备朝向）
-    var dialDisplayAngle = remember { -state.heading }
-    LaunchedEffect(state.heading) {
-        dialDisplayAngle = shortestAngle(dialDisplayAngle, -state.heading)
+    // 刻度盘旋转动画：把"正北"旋到它该出现的屏幕位置
+    val dialTarget = screenAngleFromNorth(0f, state.heading)
+    var dialDisplayAngle = remember { dialTarget }
+    LaunchedEffect(dialTarget) {
+        dialDisplayAngle = shortestAngle(dialDisplayAngle, dialTarget)
     }
     val animatedDialRotation by animateFloatAsState(
         targetValue = dialDisplayAngle,
@@ -129,8 +147,8 @@ fun CompassView(
                 drawDial(centerX, centerY, outerRadius)
             }
 
-            // 3. 方向箭头
-            rotate(degrees = -animatedArrowRotation, pivot = Offset(centerX, centerY)) {
+            // 3. 方向箭头（旋转角 = 目标相对屏幕上方的顺时针夹角）
+            rotate(degrees = animatedArrowRotation, pivot = Offset(centerX, centerY)) {
                 drawArrow(centerX, centerY, outerRadius, arrowColor)
             }
 
@@ -155,15 +173,14 @@ fun CompassView(
         ) {
             if (state.isTargetFound) {
                 // 距离数字
-                val distText = formatDistance(state.distance)
                 Text(
-                    text = distText,
+                    text = formatDistance(state.distance),
                     style = MaterialTheme.typography.displayLarge,
                     color = arrowColor,
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = "米",
+                    text = distanceUnit(state.distance),
                     style = MaterialTheme.typography.headlineMedium,
                     color = arrowColor.copy(alpha = 0.8f),
                     textAlign = TextAlign.Center
@@ -369,6 +386,12 @@ fun formatDistance(meters: Float): String {
         String.format("%.1f", meters / 1000f)
     }
 }
+
+/**
+ * 距离单位，与 [formatDistance] 对应。
+ * < 1000m → "米"，>= 1000m → "公里"（此时数值已是公里值）。
+ */
+fun distanceUnit(meters: Float): String = if (meters < 1000f) "米" else "公里"
 
 /**
  * 方位角 → 中文方向描述。

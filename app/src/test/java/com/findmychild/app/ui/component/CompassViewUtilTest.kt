@@ -1,6 +1,7 @@
 package com.findmychild.app.ui.component
 
 import androidx.compose.ui.graphics.Color
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -15,6 +16,78 @@ import org.junit.Test
  * - bearingToText: 方向描述映射
  */
 class CompassViewUtilTest {
+
+    // ===== screenAngleFromNorth() 测试 =====
+    //
+    // 这是刻度盘与箭头共用的唯一几何真值来源，返回值即 Compose Canvas
+    // rotate(degrees) 的入参（正值 = 顺时针 = 屏幕右方）。
+
+    @Test
+    fun `screenAngleFromNorth device faces north keeps the angle unchanged`() {
+        // 设备朝正北 -> 屏幕正上方就是北，右方是东
+        assertEquals(0f, screenAngleFromNorth(0f, 0f), 0.001f)     // 目标正北 -> 正上方
+        assertEquals(90f, screenAngleFromNorth(90f, 0f), 0.001f)   // 目标正东 -> 正右方
+        assertEquals(180f, screenAngleFromNorth(180f, 0f), 0.001f) // 目标正南 -> 正下方
+        assertEquals(-90f, screenAngleFromNorth(270f, 0f), 0.001f) // 目标正西 -> 正左方
+    }
+
+    @Test
+    fun `screenAngleFromNorth device faces east puts north on the left`() {
+        // 设备朝正东 -> 屏幕正上方是东，正北应该在左侧
+        assertEquals(-90f, screenAngleFromNorth(0f, 90f), 0.001f)   // 正北 -> 左
+        assertEquals(0f, screenAngleFromNorth(90f, 90f), 0.001f)    // 正东 -> 正上方
+        assertEquals(90f, screenAngleFromNorth(180f, 90f), 0.001f)  // 正南 -> 右
+    }
+
+    @Test
+    fun `screenAngleFromNorth device faces west puts north on the right`() {
+        // 设备朝正西 -> 正北在右侧
+        assertEquals(90f, screenAngleFromNorth(0f, 270f), 0.001f)
+        assertEquals(-90f, screenAngleFromNorth(180f, 270f), 0.001f)
+    }
+
+    @Test
+    fun `screenAngleFromNorth takes the shortest path across 360`() {
+        // 350° 的目标在设备朝北时几乎就在正前方偏左一点，而不是绕行 350°
+        assertEquals(-10f, screenAngleFromNorth(350f, 0f), 0.001f)
+        // 10° 的目标在设备朝西(270°)时偏右 100°
+        assertEquals(100f, screenAngleFromNorth(10f, 270f), 0.001f)
+    }
+
+    @Test
+    fun `screenAngleFromNorth result stays within the open interval`() {
+        for (angle in 0 until 360 step 7) {
+            for (heading in 0 until 360 step 11) {
+                val r = screenAngleFromNorth(angle.toFloat(), heading.toFloat())
+                assertTrue("($angle, $heading) -> $r", r > -180f && r <= 180f)
+            }
+        }
+    }
+
+    @Test
+    fun `screenAngleFromNorth east and west are opposite on screen`() {
+        // 东西在屏幕上恒差 180°（注意：这不是"关于 0 对称"）
+        for (heading in 0 until 360 step 15) {
+            val h = heading.toFloat()
+            val diff = screenAngleFromNorth(270f, h) - screenAngleFromNorth(90f, h)
+            assertEquals("heading=$h", 180f, abs(diff), 0.001f)
+        }
+    }
+
+    @Test
+    fun `screenAngleFromNorth is a lossless change of basis`() {
+        // screenAngle + heading 必须还原出罗盘方位角。这条才是符号翻转的守门测试：
+        // 一旦把旋转方向取反，往返就对不上了（上面的"东西差 180°"反而照样成立）。
+        for (angle in 0 until 360 step 13) {
+            for (heading in 0 until 360 step 17) {
+                val a = angle.toFloat()
+                val h = heading.toFloat()
+                val restored = (screenAngleFromNorth(a, h) + h) % 360f
+                val normalised = if (restored < 0f) restored + 360f else restored
+                assertEquals("angle=$a heading=$h", a, normalised, 0.001f)
+            }
+        }
+    }
 
     // ===== shortestAngle() 测试 =====
 
@@ -150,6 +223,35 @@ class CompassViewUtilTest {
     @Test
     fun `formatDistance 15600 returns 15 point 6`() {
         assertEquals("15.6", formatDistance(15600f))
+    }
+
+    // ===== distanceUnit() 测试 =====
+
+    @Test
+    fun `distanceUnit under 1000 returns meters`() {
+        assertEquals("米", distanceUnit(0f))
+        assertEquals("米", distanceUnit(156f))
+        assertEquals("米", distanceUnit(999f))
+    }
+
+    @Test
+    fun `distanceUnit at and over 1000 returns kilometers`() {
+        assertEquals("公里", distanceUnit(1000f))
+        assertEquals("公里", distanceUnit(1200f))
+        assertEquals("公里", distanceUnit(15600f))
+    }
+
+    @Test
+    fun `distanceUnit agrees with formatDistance threshold`() {
+        // 单位切换必须和 formatDistance 的数值切换在同一个阈值上，
+        // 否则会出现 "1.2 米" 或 "156 公里" 这种错配
+        for (m in listOf(0f, 5f, 156f, 999f, 999.5f, 1000f, 1000.5f, 1200f)) {
+            val value = formatDistance(m)
+            val unit = distanceUnit(m)
+            val isKm = unit == "公里"
+            assertEquals("formatDistance($m)=$value vs unit=$unit", isKm, value.contains("."))
+            if (isKm) assertTrue("$m should be >= 1000m", m >= 1000f) else assertTrue("$m should be < 1000m", m < 1000f)
+        }
     }
 
     // ===== bearingToText() 测试 =====
