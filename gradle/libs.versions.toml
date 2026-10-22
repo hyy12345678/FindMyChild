@@ -10,13 +10,22 @@ camerax = "1.4.1"
 zxing = "3.5.3"
 play-services-location = "21.3.0"
 okhttp = "4.12.0"
-retrofit = "2.11.0"
 moshi = "1.15.1"
 datastore = "1.1.1"
 coroutines = "1.9.0"
+coroutines-play-services = "1.9.0"
 core-ktx = "1.13.1"
 activity-compose = "1.9.3"
 ksp = "2.0.21-1.0.27"
+junit = "4.13.2"
+coroutines-test = "1.9.0"
+robolectric = "4.13"
+androidx-test-core = "1.6.1"
+androidx-test-runner = "1.6.2"
+androidx-junit = "1.2.1"
+compose-ui-test-junit4 = "1.7.3"
+mockk = "1.13.13"
+turbine = "1.2.0"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -66,8 +75,6 @@ zxing = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 # Network
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
-retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
-retrofit-moshi = { group = "com.squareup.retrofit2", name = "converter-moshi", version.ref = "retrofit" }
 moshi = { group = "com.squareup.moshi", name = "moshi-kotlin", version.ref = "moshi" }
 moshi-codegen = { group = "com.squareup.moshi", name = "moshi-kotlin-codegen", version.ref = "moshi" }
 
@@ -76,6 +83,7 @@ datastore = { group = "androidx.datastore", name = "datastore-preferences", vers
 
 # Coroutines
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines-play-services" }
 
 # Ktor Server (relay-server)
 ktor-server-core = { group = "io.ktor", name = "ktor-server-core", version = "3.0.3" }
@@ -84,3 +92,17 @@ ktor-server-websockets = { group = "io.ktor", name = "ktor-server-websockets", v
 ktor-serialization-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version = "3.0.3" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.7.3" }
 logback-classic = { group = "ch.qos.logback", name = "logback-classic", version = "1.5.12" }
+
+# Test
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines-test" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidx-test-core" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidx-test-runner" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidx-junit" }
+compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4", version.ref = "compose-ui-test-junit4" }
+compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest", version.ref = "compose-ui-test-junit4" }
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+mockk-android = { group = "io.mockk", name = "mockk-android", version.ref = "mockk" }
+turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
+ktor-server-test-host = { group = "io.ktor", name = "ktor-server-test-host", version = "3.0.3" }

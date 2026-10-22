@@ -20,4 +20,10 @@ interface SettingsRepository {
 
     /** 清除所有数据（断开配对后） */
     suspend fun clearAll()
+
+    /** 获取服务器地址 */
+    fun getServerUrl(): Flow<String>
+
+    /** 保存服务器地址 */
+    suspend fun setServerUrl(url: String)
 }

@@ -29,11 +29,15 @@ class SettingsDataStore @Inject constructor(
         val DEVICE_NAME = stringPreferencesKey("device_name")
         val PAIRED_AT = longPreferencesKey("paired_at")
         val PEER_DEVICE_NAME = stringPreferencesKey("peer_device_name")
+        val SERVER_URL = stringPreferencesKey("server_url")
+
+        /** 默认服务器地址（模拟器环境） */
+        const val DEFAULT_SERVER_URL = "ws://10.0.2.2:8080/ws"
     }
 
     /** 获取角色 Flow */
     val userRole: Flow<UserRole?> = context.dataStore.data.map { prefs ->
-        if (!prefs[HAS_SELECTED_ROLE]) null
+        if (prefs[HAS_SELECTED_ROLE] != true) null
         else if (prefs[IS_PARENT] == true) UserRole.PARENT
         else UserRole.CHILD
     }
@@ -71,5 +75,15 @@ class SettingsDataStore @Inject constructor(
     /** 清除所有数据 */
     suspend fun clearAll() {
         context.dataStore.edit { it.clear() }
+    }
+
+    /** 获取服务器地址 Flow */
+    val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[SERVER_URL] ?: DEFAULT_SERVER_URL
+    }
+
+    /** 保存服务器地址 */
+    suspend fun setServerUrl(url: String) {
+        context.dataStore.edit { it[SERVER_URL] = url }
     }
 }

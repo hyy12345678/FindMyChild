@@ -24,7 +24,46 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.findmychild.app.data.sensor.LocationService
+import com.findmychild.app.domain.repository.SettingsRepository
+import com.findmychild.app.domain.repository.SyncRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+/**
+ * 孩子端配对成功后的状态页 ViewModel。
+ * 处理断开连接和清理本地状态。
+ */
+@HiltViewModel
+class ChildActiveViewModel @Inject constructor(
+    private val syncRepository: SyncRepository,
+    private val settingsRepository: SettingsRepository
+) : ViewModel() {
+
+    /**
+     * 停止位置共享：断开 WebSocket、停止定位服务、清除本地配对数据。
+     */
+    fun stopSharing(context: android.content.Context, onDone: () -> Unit) {
+        viewModelScope.launch {
+            // 1. 停止前台定位服务
+            val intent = Intent(context, LocationService::class.java)
+            context.stopService(intent)
+
+            // 2. 断开 WebSocket 连接
+            syncRepository.disconnect()
+
+            // 3. 清除本地配对数据
+            settingsRepository.clearAll()
+
+            // 4. 通知 UI 跳转
+            onDone()
+        }
+    }
+}
 
 /**
  * 孩子端配对成功后的状态页。
@@ -32,7 +71,8 @@ import com.findmychild.app.data.sensor.LocationService
  */
 @Composable
 fun ChildActiveScreen(
-    onDisconnected: () -> Unit
+    onDisconnected: () -> Unit,
+    viewModel: ChildActiveViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
 
@@ -82,10 +122,9 @@ fun ChildActiveScreen(
 
         Button(
             onClick = {
-                // 停止服务
-                val intent = Intent(context, LocationService::class.java)
-                context.stopService(intent)
-                onDisconnected()
+                viewModel.stopSharing(context) {
+                    onDisconnected()
+                }
             },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(

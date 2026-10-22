@@ -11,7 +11,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.rememberNavController
-import com.findmychild.app.domain.model.UserRole
 import com.findmychild.app.ui.navigation.AppNavGraph
 import com.findmychild.app.ui.navigation.NavRoute
 import com.findmychild.app.ui.theme.FindMyChildTheme
@@ -33,8 +32,7 @@ class MainActivity : ComponentActivity() {
 
                     AppNavGraph(
                         navController = navController,
-                        startDestination = startupRoute,
-                        onRoleSelected = { role -> }
+                        startDestination = startupRoute
                     )
                 }
             }

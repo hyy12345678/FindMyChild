@@ -18,4 +18,10 @@ dependencies {
     implementation(libs.ktor.serialization.json)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.logback.classic)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.turbine)
+    testImplementation(libs.mockk)
 }

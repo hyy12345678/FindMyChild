@@ -22,4 +22,8 @@ class SettingsRepositoryImpl @Inject constructor(
     override suspend fun savePairingInfo(info: PairingInfo) = dataStore.savePairingInfo(info)
 
     override suspend fun clearAll() = dataStore.clearAll()
+
+    override fun getServerUrl(): Flow<String> = dataStore.serverUrl
+
+    override suspend fun setServerUrl(url: String) = dataStore.setServerUrl(url)
 }

@@ -69,17 +69,6 @@ class QrGenerationViewModel @Inject constructor(
             settingsRepository.clearAll()
         }
     }
-
-    fun onPaired(onSuccess: () -> Unit) {
-        viewModelScope.launch {
-            // 监听连接变为 Connected 后通知配对成功
-            syncRepository.observeConnectionState().collect { state ->
-                if (state == ConnectionState.Connected) {
-                    onSuccess()
-                }
-            }
-        }
-    }
 }
 
 data class QrGenerationUiState(

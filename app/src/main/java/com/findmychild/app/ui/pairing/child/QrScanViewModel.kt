@@ -36,6 +36,16 @@ class QrScanViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(isScanning = true)
     }
 
+    /**
+     * 用户取消配对时调用：断开 WebSocket 连接并清除本地状态。
+     */
+    fun cancelPairing() {
+        viewModelScope.launch {
+            syncRepository.disconnect()
+            settingsRepository.clearAll()
+        }
+    }
+
     fun analyzeQrImage(imageProxy: ImageProxy) {
         if (hasScanned) {
             imageProxy.close()

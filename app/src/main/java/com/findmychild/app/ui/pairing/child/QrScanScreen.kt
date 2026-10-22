@@ -8,6 +8,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,7 +35,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -55,20 +60,27 @@ fun QrScanScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // 相机权限
+    // 权限状态：null=未请求, true=已授权, false=被拒绝
+    var permissionState by remember { mutableStateOf<Boolean?>(null) }
+
+    // 相机权限请求
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
+        permissionState = granted
         if (granted) {
             viewModel.startScanning()
         }
     }
 
-    // 自动请求权限
+    // 首次进入时检查/请求权限
     LaunchedEffect(Unit) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasPermission) {
+            permissionState = true
             viewModel.startScanning()
         } else {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
@@ -107,88 +119,125 @@ fun QrScanScreen(
                 .padding(padding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 相机预览区域
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    val previewView = remember { PreviewView(context) }
-                    val cameraProviderFuture = remember {
-                        ProcessCameraProvider.getInstance(context)
-                    }
-                    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+            when {
+                // 权限被拒绝 → 显示提示和重试按钮
+                permissionState == false -> {
+                    Spacer(modifier = Modifier.weight(1f))
 
-                    AndroidView(
-                        factory = { previewView },
-                        modifier = Modifier.fillMaxSize()
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
                     )
 
-                    LaunchedEffect(uiState.isScanning) {
-                        if (uiState.isScanning) {
-                            val cameraProvider = cameraProviderFuture.get()
-                            val preview = androidx.camera.core.Preview.Builder().build().also {
-                                it.setSurfaceProvider(previewView.surfaceProvider)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "需要相机权限才能扫码配对",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 32.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Button(onClick = {
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }) {
+                        Text("重新授予权限")
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+
+                // 权限已授权或正在请求 → 显示相机预览
+                else -> {
+                    // 相机预览区域
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            .weight(1f),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            val previewView = remember { PreviewView(context) }
+                            val cameraProviderFuture = remember {
+                                ProcessCameraProvider.getInstance(context)
                             }
+                            val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
 
-                            val imageAnalysis = ImageAnalysis.Builder()
-                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                                .build()
-                                .also {
-                                    it.setAnalyzer(analysisExecutor) { imageProxy ->
-                                        viewModel.analyzeQrImage(imageProxy)
+                            AndroidView(
+                                factory = { previewView },
+                                modifier = Modifier.fillMaxSize()
+                            )
+
+                            LaunchedEffect(uiState.isScanning) {
+                                if (uiState.isScanning) {
+                                    val cameraProvider = cameraProviderFuture.get()
+                                    val preview = androidx.camera.core.Preview.Builder().build().also {
+                                        it.setSurfaceProvider(previewView.surfaceProvider)
                                     }
+
+                                    val imageAnalysis = ImageAnalysis.Builder()
+                                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                        .build()
+                                        .also {
+                                            it.setAnalyzer(analysisExecutor) { imageProxy ->
+                                                viewModel.analyzeQrImage(imageProxy)
+                                            }
+                                        }
+
+                                    val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+                                    try {
+                                        cameraProvider.unbindAll()
+                                        cameraProvider.bindToLifecycle(
+                                            lifecycleOwner,
+                                            cameraSelector,
+                                            preview,
+                                            imageAnalysis
+                                        )
+                                    } catch (_: Exception) {}
                                 }
-
-                            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
-                            try {
-                                cameraProvider.unbindAll()
-                                cameraProvider.bindToLifecycle(
-                                    lifecycleOwner,
-                                    cameraSelector,
-                                    preview,
-                                    imageAnalysis
-                                )
-                            } catch (_: Exception) {}
+                            }
                         }
                     }
+
+                    // 提示文字
+                    Text(
+                        text = "将二维码放入框内自动扫描",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(horizontal = 32.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (uiState.isConnecting) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.size(8.dp))
+                            Text("正在连接到家长设备...", fontSize = 14.sp)
+                        }
+                    }
+
+                    if (uiState.errorMessage != null) {
+                        Text(
+                            text = uiState.errorMessage!!,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(32.dp))
                 }
             }
-
-            // 提示文字
-            Text(
-                text = "将二维码放入框内自动扫描",
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                modifier = Modifier.padding(horizontal = 32.dp)
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (uiState.isConnecting) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text("正在连接到家长设备...", fontSize = 14.sp)
-                }
-            }
-
-            if (uiState.errorMessage != null) {
-                Text(
-                    text = uiState.errorMessage!!,
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }

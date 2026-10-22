@@ -26,7 +26,7 @@ fun Route.webSocketHandler(sessionManager: SessionManager) {
 
                 when (type) {
                     "REGISTER" -> {
-                        val msg = json.decodeFromJsonElement<RegisterMessage>(obj)
+                        val msg = json.decodeFromJsonElement(RegisterMessage.serializer(), obj)
                         sessionId = msg.sessionId
 
                         val result = sessionManager.register(msg.sessionId, msg.role, this)
@@ -65,7 +65,7 @@ fun Route.webSocketHandler(sessionManager: SessionManager) {
                     }
 
                     "LOCATION_UPDATE" -> {
-                        val msg = json.decodeFromJsonElement<LocationUpdateMessage>(obj)
+                        val msg = json.decodeFromJsonElement(LocationUpdateMessage.serializer(), obj)
                         val sid = msg.sessionId
 
                         val peerSession = sessionManager.relayLocation(

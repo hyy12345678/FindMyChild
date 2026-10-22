@@ -15,14 +15,14 @@ import com.findmychild.app.data.sensor.LocationService
 import com.findmychild.app.domain.model.UserRole
 import com.findmychild.app.ui.compass.CompassScreen
 import com.findmychild.app.ui.pairing.child.QrScanScreen
+import com.findmychild.app.ui.pairing.child.QrScanViewModel
 import com.findmychild.app.ui.pairing.parent.QrGenerationScreen
 import com.findmychild.app.ui.role.RoleSelectionScreen
 
 @Composable
 fun AppNavGraph(
     navController: NavHostController,
-    startDestination: String,
-    onRoleSelected: (UserRole) -> Unit
+    startDestination: String
 ) {
     NavHost(
         navController = navController,
@@ -32,7 +32,6 @@ fun AppNavGraph(
         composable(NavRoute.RoleSelection.route) {
             RoleSelectionScreen(
                 onRoleSelected = { role ->
-                    onRoleSelected(role)
                     when (role) {
                         UserRole.PARENT -> {
                             navController.navigate(NavRoute.ParentQrGeneration.route) {
@@ -68,9 +67,11 @@ fun AppNavGraph(
         // 孩子：扫描二维码
         composable(NavRoute.ChildQrScan.route) {
             val context = LocalContext.current
+            val scanViewModel: QrScanViewModel = hiltViewModel()
 
             QrScanScreen(
                 onBack = {
+                    scanViewModel.cancelPairing()
                     navController.navigate(NavRoute.RoleSelection.route) {
                         popUpTo(0) { inclusive = true }
                     }

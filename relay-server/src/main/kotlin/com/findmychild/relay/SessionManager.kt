@@ -1,24 +1,74 @@
 package com.findmychild.relay
 
 import io.ktor.websocket.WebSocketSession
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 管理配对会话。
- * sessionId → Session(parentSession?, childSession?, createdAt)
+ * sessionId → Session(parentSession?, childSession?, createdAt, lastActiveAt)
+ *
+ * 内置定时清理机制：超过 [SESSION_TIMEOUT_MS] 未活跃的会话自动清除，
+ * 防止家长生成 QR 后不扫码导致 session 永久残留。
  */
 class SessionManager {
 
     private data class Session(
         var parentSession: WebSocketSession? = null,
         var childSession: WebSocketSession? = null,
-        val createdAt: Long = System.currentTimeMillis()
+        val createdAt: Long = System.currentTimeMillis(),
+        var lastActiveAt: Long = System.currentTimeMillis()
     )
 
     private val sessions = ConcurrentHashMap<String, Session>()
     private val mutex = Mutex()
+
+    companion object {
+        /** 会话超时时间：30 分钟 */
+        private const val SESSION_TIMEOUT_MS = 30 * 60 * 1000L
+        /** 清理间隔：5 分钟 */
+        private const val CLEANUP_INTERVAL_MS = 5 * 60 * 1000L
+    }
+
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    init {
+        // 启动定期清理任务
+        cleanupScope.launch {
+            while (true) {
+                delay(CLEANUP_INTERVAL_MS)
+                cleanupExpiredSessions()
+            }
+        }
+    }
+
+    /**
+     * 清理过期的空闲会话。
+     * 如果双方都未连接且创建时间超过超时阈值，则移除。
+     */
+    private suspend fun cleanupExpiredSessions() {
+        val now = System.currentTimeMillis()
+        val expiredIds = mutableListOf<String>()
+
+        mutex.withLock {
+            for ((id, session) in sessions) {
+                val isIdle = session.parentSession == null && session.childSession == null
+                val isExpired = now - session.lastActiveAt > SESSION_TIMEOUT_MS
+                if (isIdle && isExpired) {
+                    expiredIds.add(id)
+                }
+            }
+            for (id in expiredIds) {
+                sessions.remove(id)
+            }
+        }
+    }
 
     /**
      * 注册设备到会话。
@@ -30,7 +80,9 @@ class SessionManager {
         wsSession: WebSocketSession
     ): RegisterResult {
         mutex.withLock {
+            val now = System.currentTimeMillis()
             val session = sessions.getOrPut(sessionId) { Session() }
+            session.lastActiveAt = now
 
             return when (role) {
                 "PARENT" -> {
@@ -87,6 +139,7 @@ class SessionManager {
         timestamp: Long
     ): WebSocketSession? {
         val session = sessions[sessionId] ?: return null
+        session.lastActiveAt = System.currentTimeMillis()
 
         // 判断发送者是谁，转发给另一方
         return if (fromSession == session.parentSession) {
@@ -107,6 +160,7 @@ class SessionManager {
         val session = sessions[sessionId] ?: return null
 
         return mutex.withLock {
+            session.lastActiveAt = System.currentTimeMillis()
             when (wsSession) {
                 session.parentSession -> {
                     session.parentSession = null
