@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -37,6 +37,24 @@ class CompassViewModel @Inject constructor(
 
     init {
         observeData()
+        ensureConnected()
+    }
+
+    /**
+     * 如果已配对但 WebSocket 未连接（如重开 App），主动建立连接。
+     */
+    private fun ensureConnected() {
+        viewModelScope.launch {
+            // 读取已保存的配对信息
+            val pairingInfo = settingsRepository.getPairingInfo().first() ?: return@launch
+            // 读取角色
+            val role = settingsRepository.getUserRole().first() ?: return@launch
+
+            // 如果当前未连接，则主动连接
+            if (_connectionState.value is ConnectionState.Disconnected) {
+                syncRepository.connect(pairingInfo.sessionId, role)
+            }
+        }
     }
 
     private fun observeData() {

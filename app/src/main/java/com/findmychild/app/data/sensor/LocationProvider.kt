@@ -11,6 +11,7 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.Tasks
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -56,9 +57,7 @@ class LocationProvider @Inject constructor(
     @SuppressLint("MissingPermission")
     suspend fun getLastLocation(): LocationData? {
         return try {
-            val task = fusedClient.lastLocation
-            // 简化处理：使用 kotlinx-coroutines-play-services 会更好
-            val loc: Location? = null  // 实际项目中用 await()
+            val loc = Tasks.await(fusedClient.lastLocation)
             loc?.toLocationData()
         } catch (e: Exception) {
             null

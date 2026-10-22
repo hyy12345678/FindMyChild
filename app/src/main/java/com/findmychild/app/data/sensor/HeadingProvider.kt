@@ -32,6 +32,15 @@ class HeadingProvider @Inject constructor(
     private var geomagnetic: FloatArray? = null
 
     fun observeHeading(): Flow<Float> = callbackFlow {
+        val accel = accelerometer
+        val mag = magnetometer
+
+        // 如果设备没有磁力计或加速度计，Flow 直接结束，不崩溃
+        if (accel == null || mag == null) {
+            close()
+            return@callbackFlow
+        }
+
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 when (event.sensor.type) {
@@ -62,11 +71,11 @@ class HeadingProvider @Inject constructor(
         }
 
         sensorManager.registerListener(
-            listener, accelerometer,
+            listener, accel,
             SensorManager.SENSOR_DELAY_GAME
         )
         sensorManager.registerListener(
-            listener, magnetometer,
+            listener, mag,
             SensorManager.SENSOR_DELAY_GAME
         )
 

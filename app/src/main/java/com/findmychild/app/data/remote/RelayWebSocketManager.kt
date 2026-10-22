@@ -9,12 +9,19 @@ import com.findmychild.app.domain.model.ConnectionState
 import com.findmychild.app.domain.model.LocationData
 import com.findmychild.app.domain.model.UserRole
 import com.squareup.moshi.Moshi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -27,7 +34,8 @@ import kotlin.math.min
 
 /**
  * WebSocket 连接管理。
- * 使用 OkHttp 原生 WebSocket，通过 callbackFlow 封装为 Flow。
+ * 使用 OkHttp 原生 WebSocket，通过 Channel 封装为 Flow。
+ * 重连采用协程实现（delay + SupervisorJob），可取消、线程安全。
  */
 @Singleton
 class RelayWebSocketManager @Inject constructor(
@@ -35,9 +43,15 @@ class RelayWebSocketManager @Inject constructor(
     private val moshi: Moshi,
     private val relayConfig: RelayConfig
 ) {
+    private val mutex = Mutex()
     private var webSocket: WebSocket? = null
     private var reconnectAttempt = 0
     private var isActive = false
+    private var currentSessionId: String? = null
+    private var currentRole: UserRole? = null
+
+    private val reconnectScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var reconnectJob: Job? = null
 
     private val connectionStateChannel = Channel<ConnectionState>(Channel.CONFLATED)
     private val peerLocationChannel = Channel<LocationData>(Channel.CONFLATED)
@@ -55,7 +69,18 @@ class RelayWebSocketManager @Inject constructor(
     /** 建立 WebSocket 连接 */
     suspend fun connect(sessionId: String, role: UserRole) {
         isActive = true
+        currentSessionId = sessionId
+        currentRole = role
         reconnectAttempt = 0
+
+        // 取消正在进行的重连
+        reconnectJob?.cancel()
+        reconnectJob = null
+
+        // 从 DataStore 读取最新服务器地址
+        val url = relayConfig.wsUrlFlow.first()
+        relayConfig.updateCachedUrl(url)
+
         connectionStateChannel.send(ConnectionState.Connecting)
 
         val request = Request.Builder()
@@ -84,16 +109,18 @@ class RelayWebSocketManager @Inject constructor(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 connectionStateChannel.trySend(ConnectionState.Disconnected)
-                attemptReconnect(sessionId, role)
+                scheduleReconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 connectionStateChannel.trySend(ConnectionState.Error(t.message ?: "连接失败"))
-                attemptReconnect(sessionId, role)
+                scheduleReconnect()
             }
         }
 
-        webSocket = okHttpClient.newWebSocket(request, listener)
+        mutex.withLock {
+            this.webSocket = okHttpClient.newWebSocket(request, listener)
+        }
     }
 
     /** 发送位置更新 */
@@ -113,6 +140,11 @@ class RelayWebSocketManager @Inject constructor(
     fun disconnect() {
         isActive = false
         reconnectAttempt = 0
+        reconnectJob?.cancel()
+        reconnectJob = null
+        currentSessionId = null
+        currentRole = null
+
         webSocket?.close(1000, "User disconnected")
         webSocket = null
         connectionStateChannel.trySend(ConnectionState.Disconnected)
@@ -156,18 +188,26 @@ class RelayWebSocketManager @Inject constructor(
         }
     }
 
-    private fun attemptReconnect(sessionId: String, role: UserRole) {
+    /**
+     * 使用协程实现指数退避重连。
+     * 替代原来的 Thread + runBlocking 方案，可取消、线程安全。
+     */
+    private fun scheduleReconnect() {
         if (!isActive) return
-        val delay = min(30000L, (1L shl reconnectAttempt) * 1000L)
+        val sid = currentSessionId ?: return
+        val role = currentRole ?: return
+
+        val delayMs = min(30000L, (1L shl reconnectAttempt) * 1000L)
         reconnectAttempt++
 
-        Thread {
+        reconnectJob = reconnectScope.launch {
+            delay(delayMs)
+            if (!isActive) return@launch
             try {
-                Thread.sleep(delay)
-                kotlinx.coroutines.runBlocking {
-                    connect(sessionId, role)
-                }
-            } catch (_: InterruptedException) {}
-        }.start()
+                connect(sid, role)
+            } catch (_: Exception) {
+                // 连接失败会在 onFailure 中触发下一次重连
+            }
+        }
     }
 }

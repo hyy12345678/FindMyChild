@@ -10,7 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.findmychild.app.MainActivity
-import com.findmychild.app.data.repository.SyncRepositoryImpl
+import com.findmychild.app.domain.repository.SyncRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -24,7 +24,7 @@ import javax.inject.Inject
 class LocationService : LifecycleService() {
 
     @Inject lateinit var locationProvider: LocationProvider
-    @Inject lateinit var syncRepository: SyncRepositoryImpl
+    @Inject lateinit var syncRepository: SyncRepository
 
     companion object {
         const val CHANNEL_ID = "location_service"

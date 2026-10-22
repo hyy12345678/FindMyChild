@@ -17,7 +17,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +51,16 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
+ * 计算角度的最短路径表示，避免动画跨越 0°/360° 时反向旋转。
+ * 例如 350° → 10° 应该顺时针转 20°，而非逆时针转 340°。
+ */
+internal fun shortestAngle(current: Float, target: Float): Float {
+    var diff = (target - current + 360f) % 360f
+    if (diff > 180f) diff -= 360f
+    return current + diff
+}
+
+/**
  * 指南针自定义 Compose 组件。
  * 用 Canvas 绘制刻度盘、方向箭头，以及距离/状态文字。
  *
@@ -63,8 +77,13 @@ fun CompassView(
     modifier: Modifier = Modifier
 ) {
     // 箭头旋转动画（500ms 平滑过渡）
+    // 使用最短路径插值，避免跨越 0°/360° 时反向旋转
+    var arrowDisplayAngle = remember { state.arrowRotation }
+    LaunchedEffect(state.arrowRotation) {
+        arrowDisplayAngle = shortestAngle(arrowDisplayAngle, state.arrowRotation)
+    }
     val animatedArrowRotation by animateFloatAsState(
-        targetValue = state.arrowRotation,
+        targetValue = arrowDisplayAngle,
         animationSpec = tween(
             durationMillis = 500,
             easing = FastOutSlowInEasing
@@ -72,8 +91,12 @@ fun CompassView(
     )
 
     // 刻度盘旋转动画（设备朝向）
+    var dialDisplayAngle = remember { -state.heading }
+    LaunchedEffect(state.heading) {
+        dialDisplayAngle = shortestAngle(dialDisplayAngle, -state.heading)
+    }
     val animatedDialRotation by animateFloatAsState(
-        targetValue = -state.heading,
+        targetValue = dialDisplayAngle,
         animationSpec = tween(
             durationMillis = 300,
             easing = FastOutSlowInEasing

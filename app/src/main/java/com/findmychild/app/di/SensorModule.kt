@@ -1,28 +1,16 @@
 package com.findmychild.app.di
 
-import android.content.Context
-import com.findmychild.app.data.sensor.HeadingProvider
-import com.findmychild.app.data.sensor.LocationProvider
 import dagger.Module
-import dagger.Provides
 import dagger.hilt.InstallIn
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import javax.inject.Singleton
 
+/**
+ * SensorModule — 空模块。
+ *
+ * LocationProvider 和 HeadingProvider 均标注了 @Singleton @Inject constructor，
+ * Hilt 可自动发现并注入，无需手动 @Provides。
+ * 保留此 Module 便于未来添加需要 @Provides 的传感器相关依赖。
+ */
 @Module
 @InstallIn(SingletonComponent::class)
-object SensorModule {
-
-    @Provides
-    @Singleton
-    fun provideLocationProvider(
-        @ApplicationContext context: Context
-    ): LocationProvider = LocationProvider(context)
-
-    @Provides
-    @Singleton
-    fun provideHeadingProvider(
-        @ApplicationContext context: Context
-    ): HeadingProvider = HeadingProvider(context)
-}
+object SensorModule
