@@ -35,11 +35,13 @@ class LocationService : LifecycleService() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
+        // 放在 onCreate 而非 onStartCommand：后者每次 startService 都会回调，
+        // 在那里 collect 会重复注册 LocationCallback，同一位置被上报多次。
+        startLocationReporting()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        startLocationReporting()
         return START_STICKY
     }
 

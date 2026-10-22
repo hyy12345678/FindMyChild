@@ -1,17 +1,13 @@
 package com.findmychild.app.ui.navigation
 
-import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.findmychild.app.data.sensor.LocationService
 import com.findmychild.app.domain.model.UserRole
 import com.findmychild.app.ui.compass.CompassScreen
 import com.findmychild.app.ui.pairing.child.QrScanScreen
@@ -66,7 +62,6 @@ fun AppNavGraph(
 
         // 孩子：扫描二维码
         composable(NavRoute.ChildQrScan.route) {
-            val context = LocalContext.current
             val scanViewModel: QrScanViewModel = hiltViewModel()
 
             QrScanScreen(
@@ -77,11 +72,8 @@ fun AppNavGraph(
                     }
                 },
                 onConnected = {
-                    // 启动前台定位服务
-                    val intent = Intent(context, LocationService::class.java)
-                    ContextCompat.startForegroundService(context, intent)
-
-                    // 跳转到已连接状态
+                    // 只负责跳转；定位服务由 ChildActiveScreen 在拿到定位权限后启动，
+                    // 未授权时启动服务也不会有任何位置上报
                     navController.navigate(NavRoute.ChildActive.route) {
                         popUpTo(NavRoute.ChildQrScan.route) { inclusive = true }
                     }
