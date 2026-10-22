@@ -250,12 +250,28 @@ val wsUrl: String
 - [x] 后台前台定位服务
 - [x] 深色模式支持
 
+### 已修复（0.1.1-dev）
+
+- [x] 修复 `getLastLocation()` 硬编码 null 致命 Bug
+- [x] WebSocket 重连改为协程实现（可取消、线程安全）
+- [x] `LocationService` 注入接口而非实现类（依赖倒置）
+- [x] 已配对重开 App 时 `CompassViewModel` 主动连接
+- [x] 指南针角度动画跨越 0°/360° 最短路径处理
+- [x] `HeadingProvider` 处理设备无磁力计的情况
+- [x] 消除重复 DI 注册（SettingsDataStore/SensorModule）
+- [x] 移除多余 Retrofit 依赖
+- [x] 清理死代码 `onPaired()` 和空回调
+- [x] `QrScanViewModel` 返回时调用 disconnect 清理连接
+- [x] `ChildActiveScreen` 退出时正确断开连接和清理状态
+- [x] 服务器地址动态配置（DataStore 持久化）
+- [x] SessionManager 会话过期自动清理（30 分钟超时）
+- [x] 完善相机权限请求流程与拒绝后 UI 反馈
+- [x] 修复 `SettingsDataStore` 空安全编译错误
+- [x] 修复 relay-server `decodeFromJsonElement` API 兼容性
+- [x] 添加 launcher 图标资源
+
 ### 开发中
 
-- [ ] 完善指南针数据刷新与动画稳定性
-- [ ] WebSocket 重连机制优化（改为协程实现）
-- [ ] 服务器地址动态配置
-- [ ] 完整的权限请求流程与异常处理
 - [ ] 单元测试与集成测试
 
 ### 计划中
@@ -264,7 +280,8 @@ val wsUrl: String
 - [ ] 位置历史轨迹回放
 - [ ] 多子女同时追踪
 - [ ] 电子围栏（离开设定范围自动告警）
-- [ ] 中继服务器认证与加密
+- [ ] 中继服务器认证与加密（wss + token）
+- [ ] QR 码签名与有效期防冒充
 - [ ] Firebase / MQTT 替代 WebSocket 通信层
 - [ ] iOS 版本（Kotlin Multiplatform）
 - [ ] 无障碍适配与国际化

@@ -6,6 +6,46 @@
 
 ---
 
+## [0.1.1-dev] - 2026-10-22
+
+### Bug 修复与安全加固
+
+#### P0 致命 Bug 修复
+
+- **修复 `LocationProvider.getLastLocation()` 硬编码 null**：使用 `Tasks.await()` 获取真实 GPS 位置，替代原来的 `null` 硬编码
+- **WebSocket 重连改为协程实现**：`RelayWebSocketManager` 的 `attemptReconnect()` 从 `Thread.sleep + runBlocking` 重构为 `CoroutineScope(SupervisorJob + Dispatchers.IO)` + `delay()`，可取消、线程安全，`webSocket` 字段用 `Mutex` 保护
+- **`LocationService` 注入接口**：从 `SyncRepositoryImpl` 改为 `SyncRepository` 接口，恢复 Clean Architecture 分层隔离
+
+#### P1 功能缺陷修复
+
+- **`CompassViewModel` 主动连接**：新增 `ensureConnected()` 方法，已配对重开 App 时从 DataStore 读取配对信息并主动建立 WebSocket 连接
+- **指南针角度动画最短路径**：新增 `shortestAngle()` 函数，通过 `remember` + `LaunchedEffect` 跟踪显示角度，避免跨越 0°/360° 时反向旋转 340°
+- **`HeadingProvider` 空传感器保护**：检查磁力计/加速度计是否为 null，无传感器时 Flow 安全关闭而非崩溃
+- **消除重复 DI 注册**：删除 `AppModule.provideSettingsDataStore()` 和 `SensorModule` 中的手动 `@Provides`，让 Hilt 自动注入
+
+#### P2 安全与健壮性
+
+- **SessionManager 会话过期清理**：添加定时清理任务（5 分钟间隔），超过 30 分钟未活跃的空闲会话自动清除
+- **服务器地址动态配置**：`RelayConfig` 改为从 DataStore 读取服务器地址，支持运行时修改，无需重新编译
+- **`ChildActiveScreen` 退出清理**：新增 `ChildActiveViewModel`，退出时正确断开 WebSocket、停止服务、清除本地状态
+- **相机权限流程完善**：`QrScanScreen` 添加权限拒绝后的 UI 反馈和重试按钮
+
+#### P3 代码清理
+
+- 移除未使用的 Retrofit + converter-moshi 依赖
+- 删除死代码 `QrGenerationViewModel.onPaired()`
+- 清理 `MainActivity` 和 `AppNavGraph` 中的空回调
+- `QrScanViewModel` 返回时调用 `cancelPairing()` 清理连接
+- `QrGenerationScreen` 全限定名 `ButtonDefaults` 改为 import
+
+#### 编译修复
+
+- 修复 `WebSocketHandler.kt` 的 `decodeFromJsonElement` API 兼容性
+- 修复 `SettingsDataStore.kt` 的 `!prefs[Boolean?]` 空安全编译错误
+- 添加缺失的 launcher 图标资源（adaptive icon）
+
+---
+
 ## [0.1.0-dev] - 2026-07-01
 
 ### 开发预览版
@@ -75,6 +115,8 @@ FindMyChild 首个开发预览版本，搭建了从配对到指南针追踪的�
 
 | 版本 | 日期 | 说明 |
 |:----:|:----:|:-----|
+| [0.1.1-dev] | 2026-10-22 | Bug 修复 + 安全加固 + 代码清理 |
 | [0.1.0-dev] | 2026-07-01 | 开发预览版，搭建完整代码框架，尚未正式发布 |
 
+[0.1.1-dev]: https://github.com/your-org/FindMyChild/releases/tag/v0.1.1-dev
 [0.1.0-dev]: https://github.com/your-org/FindMyChild/releases/tag/v0.1.0-dev
