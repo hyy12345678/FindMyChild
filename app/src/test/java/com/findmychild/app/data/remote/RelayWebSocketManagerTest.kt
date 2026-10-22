@@ -1,6 +1,7 @@
 package com.findmychild.app.data.remote
 
 import app.cash.turbine.test
+import com.findmychild.app.data.local.SettingsDataStore
 import com.findmychild.app.data.remote.dto.ErrorDto
 import com.findmychild.app.data.remote.dto.PairingStatusDto
 import com.findmychild.app.data.remote.dto.PeerLocationDto
@@ -10,6 +11,7 @@ import com.squareup.moshi.Moshi
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,7 +43,13 @@ class RelayWebSocketManagerTest {
 
     @Before
     fun setUp() {
-        val relayConfig = RelayConfig(mockk(relaxed = true))
+        // RelayConfig 在构造函数里就取 settingsDataStore.serverUrl 赋值给 wsUrlFlow，
+        // relaxed mock 给出的 Flow 不发射任何元素，会让 connect() 里的 .first() 抛
+        // NoSuchElementException。因此必须先 stub 好这个 Flow 再构造 RelayConfig。
+        val settingsDataStore = mockk<SettingsDataStore>(relaxed = true)
+        every { settingsDataStore.serverUrl } returns flowOf(SettingsDataStore.DEFAULT_SERVER_URL)
+
+        val relayConfig = RelayConfig(settingsDataStore)
         every { mockClient.newWebSocket(any(), any()) } returns mockWebSocket
         manager = RelayWebSocketManager(mockClient, moshi, relayConfig)
     }

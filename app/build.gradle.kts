@@ -66,6 +66,8 @@ dependencies {
     implementation(libs.compose.material.icons)
     debugImplementation(libs.compose.tooling)
     debugImplementation(libs.compose.tooling.preview)
+    // Robolectric 下的 createComposeRule() 需要 ComponentActivity 注入 debug manifest
+    debugImplementation(libs.compose.ui.test.manifest)
 
     // Navigation
     implementation(libs.navigation.compose)

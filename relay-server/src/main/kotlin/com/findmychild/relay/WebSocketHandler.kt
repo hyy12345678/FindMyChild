@@ -10,7 +10,13 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+// encodeDefaults 必须显式为 true：本配置下带默认值的字段（尤其作为路由依据的
+// type）不会被编码，客户端按 type 分发消息，缺了会被整条丢弃。
+private val json = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+    encodeDefaults = true
+}
 
 fun Route.webSocketHandler(sessionManager: SessionManager) {
     webSocket("/ws") {

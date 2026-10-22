@@ -8,6 +8,9 @@ import com.findmychild.app.domain.model.CompassState
 import com.findmychild.app.ui.theme.FindMyChildTheme
 import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * [CompassView] UI 渲染测试。
@@ -17,6 +20,8 @@ import org.junit.Test
  * - 目标找到时显示距离和方向
  * - GPS 信号弱时显示精度提示
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class CompassViewTest {
 
     @get:Rule

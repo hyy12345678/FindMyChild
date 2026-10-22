@@ -1,6 +1,5 @@
 package com.findmychild.relay
 
-import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.WebSockets as ClientWebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.server.application.Application
@@ -36,10 +35,6 @@ class RelayServerE2ETest {
     private fun childRegisterJson(sessionId: String) =
         """{"type":"REGISTER","sessionId":"$sessionId","role":"CHILD"}"""
 
-    private fun buildClient(): HttpClient = HttpClient {
-        install(ClientWebSockets)
-    }
-
     private fun Application.configureServer() {
         install(WebSockets)
         val sessionManager = SessionManager()
@@ -50,8 +45,8 @@ class RelayServerE2ETest {
     fun `parent registers and receives waiting status`() = testApplication {
         application { configureServer() }
 
-        val client = buildClient()
-        client.webSocket("ws://localhost:8080/ws") {
+        val client = createClient { install(ClientWebSockets) }
+        client.webSocket("/ws") {
             send(Frame.Text(parentRegisterJson("e2e-1")))
             val response = incoming.receive()
             assertTrue(response is Frame.Text, "Expected Text frame but got $response")
@@ -66,8 +61,8 @@ class RelayServerE2ETest {
     fun `child registers and receives waiting status`() = testApplication {
         application { configureServer() }
 
-        val client = buildClient()
-        client.webSocket("ws://localhost:8080/ws") {
+        val client = createClient { install(ClientWebSockets) }
+        client.webSocket("/ws") {
             send(Frame.Text(childRegisterJson("e2e-2")))
             val response = incoming.receive()
             assertTrue(response is Frame.Text)
@@ -82,9 +77,10 @@ class RelayServerE2ETest {
     fun `parent and child pair successfully`() = testApplication {
         application { configureServer() }
 
-        // 家长先注册
-        val parentClient = buildClient()
-        parentClient.webSocket("ws://localhost:8080/ws") {
+        val parentClient = createClient { install(ClientWebSockets) }
+        val childClient = createClient { install(ClientWebSockets) }
+
+        parentClient.webSocket("/ws") {
             send(Frame.Text(parentRegisterJson("e2e-3")))
 
             // 家长收到 WAITING
@@ -94,8 +90,7 @@ class RelayServerE2ETest {
             assertEquals("WAITING", waitingObj["status"]?.jsonPrimitive?.content)
 
             // 孩子注册
-            val childClient = buildClient()
-            childClient.webSocket("ws://localhost:8080/ws") {
+            childClient.webSocket("/ws") {
                 send(Frame.Text(childRegisterJson("e2e-3")))
 
                 // 孩子收到 PAIRED
@@ -120,8 +115,8 @@ class RelayServerE2ETest {
         application { configureServer() }
 
         // 第一个家长注册
-        val parentClient1 = buildClient()
-        parentClient1.webSocket("ws://localhost:8080/ws") {
+        val parentClient1 = createClient { install(ClientWebSockets) }
+        parentClient1.webSocket("/ws") {
             send(Frame.Text(parentRegisterJson("e2e-5")))
             val first = incoming.receive()
             assertTrue(first is Frame.Text)
@@ -131,8 +126,8 @@ class RelayServerE2ETest {
         parentClient1.close()
 
         // 新连接注册同一个 session 的 PARENT → 由于上一个已断开，应该成功
-        val client2 = buildClient()
-        client2.webSocket("ws://localhost:8080/ws") {
+        val client2 = createClient { install(ClientWebSockets) }
+        client2.webSocket("/ws") {
             send(Frame.Text(parentRegisterJson("e2e-5")))
             val response = incoming.receive()
             assertTrue(response is Frame.Text)
@@ -146,8 +141,8 @@ class RelayServerE2ETest {
     fun `invalid role returns error`() = testApplication {
         application { configureServer() }
 
-        val client = buildClient()
-        client.webSocket("ws://localhost:8080/ws") {
+        val client = createClient { install(ClientWebSockets) }
+        client.webSocket("/ws") {
             send(Frame.Text("""{"type":"REGISTER","sessionId":"e2e-6","role":"TEACHER"}"""))
             val errorResponse = incoming.receive()
             assertTrue(errorResponse is Frame.Text)

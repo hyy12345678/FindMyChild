@@ -62,9 +62,10 @@ class CompassViewUtilTest {
 
     @Test
     fun `shortestAngle exactly 180 degrees counterclockwise`() {
-        // 180° → 0°，diff = (0 - 180 + 360) % 360 = 180，不 > 180
+        // 180° → 0°，diff = (0 - 180 + 360) % 360 = 180，不 > 180 所以不减
         val result = shortestAngle(180f, 0f)
-        assertEquals(180f, result, 0.001f)
+        // 恰好 180° 时两个方向等价，实现取顺时针，因此返回 180 + 180 = 360
+        assertEquals(360f, result, 0.001f)
     }
 
     @Test

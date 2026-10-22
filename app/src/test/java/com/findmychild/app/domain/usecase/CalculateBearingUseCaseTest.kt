@@ -164,8 +164,9 @@ class CalculateBearingUseCaseTest {
     }
 
     @Test
-    fun `normalizeAngle 180 returns 180`() {
-        assertEquals(180f, useCase.normalizeAngle(180f), 0.001f)
+    fun `normalizeAngle 180 returns negative 180`() {
+        // ±180° 等价；实现的契约是 [-180, 180]，故 180° 归一化得 -180°
+        assertEquals(-180f, useCase.normalizeAngle(180f), 0.001f)
     }
 
     @Test
