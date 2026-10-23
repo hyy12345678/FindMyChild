@@ -95,7 +95,9 @@ fun CompassView(
     // 箭头旋转动画（500ms 平滑过渡）
     // 目标角度由 screenAngleFromNorth 统一推导，避免各处自行决定符号
     val arrowTarget = screenAngleFromNorth(state.bearing, state.heading)
-    var arrowDisplayAngle = remember { arrowTarget }
+    // 必须用 mutableFloatStateOf：普通局部变量既不会因写入而重组，
+    // 也会在下次重组时被 remember 的缓存值覆盖，动画目标就永远停在初始角度。
+    var arrowDisplayAngle by remember { mutableFloatStateOf(arrowTarget) }
     LaunchedEffect(arrowTarget) {
         arrowDisplayAngle = shortestAngle(arrowDisplayAngle, arrowTarget)
     }
@@ -109,7 +111,7 @@ fun CompassView(
 
     // 刻度盘旋转动画：把"正北"旋到它该出现的屏幕位置
     val dialTarget = screenAngleFromNorth(0f, state.heading)
-    var dialDisplayAngle = remember { dialTarget }
+    var dialDisplayAngle by remember { mutableFloatStateOf(dialTarget) }
     LaunchedEffect(dialTarget) {
         dialDisplayAngle = shortestAngle(dialDisplayAngle, dialTarget)
     }

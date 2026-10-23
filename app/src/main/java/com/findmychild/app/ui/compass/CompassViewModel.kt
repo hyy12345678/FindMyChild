@@ -10,6 +10,7 @@ import com.findmychild.app.domain.repository.SettingsRepository
 import com.findmychild.app.domain.repository.SyncRepository
 import com.findmychild.app.domain.usecase.CalculateBearingUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,33 +33,25 @@ class CompassViewModel @Inject constructor(
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
+    private var observeJob: Job? = null
     private var myLastLocation: LocationData? = null
     private var peerLastLocation: LocationData? = null
 
     init {
-        observeData()
         ensureConnected()
     }
 
     /**
-     * 如果已配对但 WebSocket 未连接（如重开 App），主动建立连接。
+     * 开始订阅三路数据（我的位置 + 对端位置 + 设备朝向）。
+     *
+     * 由 UI 在定位权限就绪后调用，而不是在 init 里自动开始：
+     * [com.findmychild.app.data.sensor.LocationProvider] 未授权时会直接关闭 Flow，
+     * 若那时就已订阅，combine 将永远少一路，用户后续授权也不会自动恢复。
+     * 孩子端没有这个问题——它的定位服务是授权后才启动的。
      */
-    private fun ensureConnected() {
-        viewModelScope.launch {
-            // 读取已保存的配对信息
-            val pairingInfo = settingsRepository.getPairingInfo().first() ?: return@launch
-            // 读取角色
-            val role = settingsRepository.getUserRole().first() ?: return@launch
-
-            // 如果当前未连接，则主动连接
-            if (_connectionState.value is ConnectionState.Disconnected) {
-                syncRepository.connect(pairingInfo.sessionId, role)
-            }
-        }
-    }
-
-    private fun observeData() {
-        viewModelScope.launch {
+    fun startObserving() {
+        if (observeJob?.isActive == true) return
+        observeJob = viewModelScope.launch {
             // 监听连接状态
             launch {
                 syncRepository.observeConnectionState().collect { state ->
@@ -80,7 +73,6 @@ class CompassViewModel @Inject constructor(
 
                     val bearing = calculateBearing.bearing(myLoc, peerLoc)
                     val distance = calculateBearing.distance(myLoc, peerLoc)
-
                     _compassState.value = CompassState(
                         bearing = bearing,
                         heading = heading,
@@ -90,6 +82,23 @@ class CompassViewModel @Inject constructor(
                         locationAccuracy = peerLoc.accuracy
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * 如果已配对但 WebSocket 未连接（如重开 App），主动建立连接。
+     */
+    private fun ensureConnected() {
+        viewModelScope.launch {
+            // 读取已保存的配对信息
+            val pairingInfo = settingsRepository.getPairingInfo().first() ?: return@launch
+            // 读取角色
+            val role = settingsRepository.getUserRole().first() ?: return@launch
+
+            // 如果当前未连接，则主动连接
+            if (_connectionState.value is ConnectionState.Disconnected) {
+                syncRepository.connect(pairingInfo.sessionId, role)
             }
         }
     }

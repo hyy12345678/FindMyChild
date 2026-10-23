@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.WebSocket
+import okhttp3.WebSocketListener as OkHttpListener
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -41,6 +42,7 @@ class RelayWebSocketManagerTest {
     private val mockClient: OkHttpClient = mockk(relaxed = true)
     private val mockWebSocket: WebSocket = mockk(relaxed = true)
     private val moshi = Moshi.Builder().build()
+    private val capturedListeners = mutableListOf<OkHttpListener>()
 
     @Before
     fun setUp() {
@@ -88,15 +90,45 @@ class RelayWebSocketManagerTest {
         // 扫码页连过一次后，ChildActiveScreen 的 ensureConnected() 会再调一次。
         // 若这里不幂等，旧 socket 会被覆盖而不关闭，服务端第二次 REGISTER 会报
         // "该会话已有孩子设备"，正常配对流程直接被破坏。
+        captureListeners()
         manager.connect("s-1", UserRole.CHILD)
+        lastListener().onOpen(mockWebSocket, mockk(relaxed = true))
+
         manager.connect("s-1", UserRole.CHILD)
 
         verify(exactly = 1) { mockClient.newWebSocket(any(), any()) }
     }
 
     @Test
-    fun `connect with a different session opens a new socket`() = runTest {
+    fun `connect again after a failure opens a new socket`() = runTest {
+        // 回归：守卫曾用 webSocket != null 判断"已有连接"，但连接失败后该字段仍非 null，
+        // 于是重连被自己挡住，永远不再尝试。失败后必须允许重新建连。
+        captureListeners()
         manager.connect("s-1", UserRole.CHILD)
+        lastListener().onFailure(mockWebSocket, RuntimeException("cleartext blocked"), null)
+
+        manager.connect("s-1", UserRole.CHILD)
+
+        verify(exactly = 2) { mockClient.newWebSocket(any(), any()) }
+    }
+
+    @Test
+    fun `connect before the socket opens is not treated as an existing connection`() = runTest {
+        // onOpen 尚未回调时不算"已连接"，允许重试
+        captureListeners()
+        manager.connect("s-1", UserRole.CHILD)
+
+        manager.connect("s-1", UserRole.CHILD)
+
+        verify(exactly = 2) { mockClient.newWebSocket(any(), any()) }
+    }
+
+    @Test
+    fun `connect with a different session opens a new socket`() = runTest {
+        captureListeners()
+        manager.connect("s-1", UserRole.CHILD)
+        lastListener().onOpen(mockWebSocket, mockk(relaxed = true))
+
         manager.connect("s-2", UserRole.CHILD)
 
         verify(exactly = 2) { mockClient.newWebSocket(any(), any()) }
@@ -104,7 +136,10 @@ class RelayWebSocketManagerTest {
 
     @Test
     fun `connect with a different role opens a new socket`() = runTest {
+        captureListeners()
         manager.connect("s-1", UserRole.CHILD)
+        lastListener().onOpen(mockWebSocket, mockk(relaxed = true))
+
         manager.connect("s-1", UserRole.PARENT)
 
         verify(exactly = 2) { mockClient.newWebSocket(any(), any()) }
@@ -112,12 +147,28 @@ class RelayWebSocketManagerTest {
 
     @Test
     fun `connect after disconnect opens a new socket`() = runTest {
+        captureListeners()
         manager.connect("s-1", UserRole.CHILD)
+        lastListener().onOpen(mockWebSocket, mockk(relaxed = true))
+
         manager.disconnect()
         manager.connect("s-1", UserRole.CHILD)
 
         verify(exactly = 2) { mockClient.newWebSocket(any(), any()) }
     }
+
+    /**
+     * 捕获 newWebSocket 收到的 listener。mock 的 OkHttpClient 不会自己回调，
+     * 不手动驱动 onOpen / onFailure 就无法表示连接的真实状态。
+     */
+    private fun captureListeners() {
+        every { mockClient.newWebSocket(any(), any()) } answers {
+            capturedListeners += args[1] as OkHttpListener
+            mockWebSocket
+        }
+    }
+
+    private fun lastListener(): OkHttpListener = capturedListeners.last()
 
     @Test
     fun `connection state flow emits updates`() = runTest {

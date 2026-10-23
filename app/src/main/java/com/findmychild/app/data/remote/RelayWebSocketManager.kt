@@ -47,6 +47,9 @@ class RelayWebSocketManager @Inject constructor(
     private var webSocket: WebSocket? = null
     private var reconnectAttempt = 0
     private var isActive = false
+
+    /** socket 是否真的打开过。连接失败后 webSocket 仍非 null，不能拿它判断“已有活跃连接”。 */
+    private var isOpen = false
     private var currentSessionId: String? = null
     private var currentRole: UserRole? = null
 
@@ -72,7 +75,7 @@ class RelayWebSocketManager @Inject constructor(
         // 否则会出现重复建连：旧 socket 不会被关闭（字段被覆盖），服务端会认为
         // 该角色已被占用，第二次 REGISTER 直接收到"该会话已有孩子设备"。
         // 典型触发路径：扫码页连过一次，进入 ChildActiveScreen 时 ensureConnected() 再连一次。
-        if (isActive && currentSessionId == sessionId && currentRole == role && webSocket != null) {
+        if (isActive && isOpen && currentSessionId == sessionId && currentRole == role && webSocket != null) {
             return@withLock
         }
 
@@ -97,6 +100,7 @@ class RelayWebSocketManager @Inject constructor(
 
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                isOpen = true
                 connectionStateChannel.trySend(ConnectionState.Connected)
                 reconnectAttempt = 0
 
@@ -116,11 +120,13 @@ class RelayWebSocketManager @Inject constructor(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                isOpen = false
                 connectionStateChannel.trySend(ConnectionState.Disconnected)
                 scheduleReconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                isOpen = false
                 connectionStateChannel.trySend(ConnectionState.Error(t.message ?: "连接失败"))
                 scheduleReconnect()
             }
@@ -151,6 +157,7 @@ class RelayWebSocketManager @Inject constructor(
         currentSessionId = null
         currentRole = null
 
+        isOpen = false
         webSocket?.close(1000, "User disconnected")
         webSocket = null
         connectionStateChannel.trySend(ConnectionState.Disconnected)

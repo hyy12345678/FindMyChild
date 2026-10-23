@@ -50,9 +50,11 @@ fun CompassScreen(
     val connectionState by viewModel.connectionState.collectAsState()
     val permission = rememberLocationPermissionState()
 
-    // 进入即申请：没有本机位置就算不出方位角，指南针也就没有意义
+    // 进入即申请：没有本机位置就算不出方位角，指南针也就没有意义。
+    // 授权后才开始订阅数据——未授权时 LocationProvider 会直接关闭 Flow，
+    // 提前订阅会让 combine 永远少一路，且之后授权也不会自动恢复。
     LaunchedEffect(permission.granted) {
-        if (!permission.granted) permission.request()
+        if (permission.granted) viewModel.startObserving() else permission.request()
     }
 
     LocationPermissionGate(

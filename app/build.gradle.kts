@@ -23,6 +23,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            // 生产只允许 wss://；明文 ws:// 会被网络策略拒绝
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -30,6 +32,8 @@ android {
         }
         debug {
             isMinifyEnabled = false
+            // 本地中继服务器是 ws:// 明文，Android 9+ 默认禁止，调试构建需要放行
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
         }
     }
 
