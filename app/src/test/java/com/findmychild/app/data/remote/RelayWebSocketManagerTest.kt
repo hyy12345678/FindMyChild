@@ -10,6 +10,7 @@ import com.findmychild.app.domain.model.UserRole
 import com.squareup.moshi.Moshi
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -80,6 +81,42 @@ class RelayWebSocketManagerTest {
         manager.disconnect()
         val state = manager.connectionState.first()
         assertTrue(state is ConnectionState.Disconnected)
+    }
+
+    @Test
+    fun `connect twice with the same session and role opens only one socket`() = runTest {
+        // 扫码页连过一次后，ChildActiveScreen 的 ensureConnected() 会再调一次。
+        // 若这里不幂等，旧 socket 会被覆盖而不关闭，服务端第二次 REGISTER 会报
+        // "该会话已有孩子设备"，正常配对流程直接被破坏。
+        manager.connect("s-1", UserRole.CHILD)
+        manager.connect("s-1", UserRole.CHILD)
+
+        verify(exactly = 1) { mockClient.newWebSocket(any(), any()) }
+    }
+
+    @Test
+    fun `connect with a different session opens a new socket`() = runTest {
+        manager.connect("s-1", UserRole.CHILD)
+        manager.connect("s-2", UserRole.CHILD)
+
+        verify(exactly = 2) { mockClient.newWebSocket(any(), any()) }
+    }
+
+    @Test
+    fun `connect with a different role opens a new socket`() = runTest {
+        manager.connect("s-1", UserRole.CHILD)
+        manager.connect("s-1", UserRole.PARENT)
+
+        verify(exactly = 2) { mockClient.newWebSocket(any(), any()) }
+    }
+
+    @Test
+    fun `connect after disconnect opens a new socket`() = runTest {
+        manager.connect("s-1", UserRole.CHILD)
+        manager.disconnect()
+        manager.connect("s-1", UserRole.CHILD)
+
+        verify(exactly = 2) { mockClient.newWebSocket(any(), any()) }
     }
 
     @Test

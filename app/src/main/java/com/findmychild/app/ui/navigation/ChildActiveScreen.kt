@@ -19,6 +19,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -29,6 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.findmychild.app.data.sensor.LocationService
+import com.findmychild.app.domain.model.ConnectionState
 import com.findmychild.app.domain.repository.SettingsRepository
 import com.findmychild.app.domain.repository.SyncRepository
 import com.findmychild.app.ui.permission.LocationPermissionGate
@@ -36,11 +39,15 @@ import com.findmychild.app.ui.permission.rememberLocationPermissionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
  * 孩子端配对成功后的状态页 ViewModel。
- * 处理断开连接和清理本地状态。
+ * 负责连接生命周期、启动/停止位置共享、以及清理本地状态。
  */
 @HiltViewModel
 class ChildActiveViewModel @Inject constructor(
@@ -48,6 +55,37 @@ class ChildActiveViewModel @Inject constructor(
     private val syncRepository: SyncRepository,
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
+
+    private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
+    val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+
+    init {
+        observeConnectionState()
+    }
+
+    /**
+     * 已配对但进程重启后，主动把 WebSocket 连接恢复回来。
+     *
+     * 家长端的 CompassViewModel 有同样的逻辑，孩子端一直没有：进程被杀后
+     * StartupViewModel 会凭本地配对信息直接路由到本页，页面显示"位置共享中"，
+     * 但 SyncRepository 的 sessionId 是空的、WebSocket 也没连，
+     * 位置消息到了服务器会被 relayLocation() 当未知会话丢弃。
+     */
+    fun ensureConnected() {
+        viewModelScope.launch {
+            val pairingInfo = settingsRepository.getPairingInfo().first() ?: return@launch
+            val role = settingsRepository.getUserRole().first() ?: return@launch
+            syncRepository.connect(pairingInfo.sessionId, role)
+        }
+    }
+
+    private fun observeConnectionState() {
+        viewModelScope.launch {
+            syncRepository.observeConnectionState().collect { state ->
+                _connectionState.value = state
+            }
+        }
+    }
 
     /**
      * 开始位置共享：启动前台定位服务。
@@ -93,6 +131,12 @@ fun ChildActiveScreen(
     viewModel: ChildActiveViewModel = hiltViewModel()
 ) {
     val permission = rememberLocationPermissionState()
+    val connectionState by viewModel.connectionState.collectAsState()
+
+    // 冷启动时恢复连接（正常扫码进入时连接已由 QrScanViewModel 建好，重复 connect 无副作用）
+    LaunchedEffect(Unit) {
+        viewModel.ensureConnected()
+    }
 
     // 拿到定位权限才启动上报：这是孩子端真正开始共享位置的前提
     LaunchedEffect(permission.granted) {
@@ -137,11 +181,21 @@ fun ChildActiveScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // 位置共享提示
+            // 连接状态：断开时不能还显示"正在上报"
+            val (statusText, statusColor) = when (connectionState) {
+                is ConnectionState.Connected ->
+                    "● 正在后台持续上报位置" to MaterialTheme.colorScheme.primary
+                is ConnectionState.Connecting ->
+                    "● 正在连接..." to MaterialTheme.colorScheme.secondary
+                is ConnectionState.Error ->
+                    "● 连接出错，正在重连" to MaterialTheme.colorScheme.error
+                is ConnectionState.Disconnected ->
+                    "● 连接已断开" to MaterialTheme.colorScheme.error
+            }
             Text(
-                text = "● 正在后台持续上报位置",
+                text = statusText,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = statusColor,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center
             )

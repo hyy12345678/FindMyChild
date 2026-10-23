@@ -67,7 +67,15 @@ class RelayWebSocketManager @Inject constructor(
     val pairingStatus: Flow<PairingStatusDto> = pairingStatusChannel.receiveAsFlow()
 
     /** 建立 WebSocket 连接 */
-    suspend fun connect(sessionId: String, role: UserRole) {
+    suspend fun connect(sessionId: String, role: UserRole) = mutex.withLock {
+        // 同一会话同一角色已有活跃连接时直接返回。
+        // 否则会出现重复建连：旧 socket 不会被关闭（字段被覆盖），服务端会认为
+        // 该角色已被占用，第二次 REGISTER 直接收到"该会话已有孩子设备"。
+        // 典型触发路径：扫码页连过一次，进入 ChildActiveScreen 时 ensureConnected() 再连一次。
+        if (isActive && currentSessionId == sessionId && currentRole == role && webSocket != null) {
+            return@withLock
+        }
+
         isActive = true
         currentSessionId = sessionId
         currentRole = role
@@ -118,9 +126,7 @@ class RelayWebSocketManager @Inject constructor(
             }
         }
 
-        mutex.withLock {
-            this.webSocket = okHttpClient.newWebSocket(request, listener)
-        }
+        this.webSocket = okHttpClient.newWebSocket(request, listener)
     }
 
     /** 发送位置更新 */
