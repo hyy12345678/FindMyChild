@@ -8,7 +8,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material3-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Changelog](https://img.shields.io/badge/Changelog-0.1.0--dev-blue.svg)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/Changelog-0.2.0--dev-blue.svg)](CHANGELOG.md)
 [![Status](https://img.shields.io/badge/状态-开发中-orange.svg)]()
 
 </div>
@@ -98,6 +98,9 @@ FindMyChild/
 │       │   ├── repository/           #   Repository 实现
 │       │   └── sensor/               #   传感器 (GPS + 磁力计)
 │       ├── di/                       # 依赖注入 (Hilt Modules)
+│       │   ├── AppModule.kt          #   Moshi / OkHttpClient
+│       │   ├── RepositoryModule.kt   #   Repository 接口绑定
+│       │   └── SensorModule.kt       #   占位（Provider 已可自动注入）
 │       ├── domain/                   # 领域层
 │       │   ├── model/                #   核心数据模型
 │       │   ├── repository/           #   Repository 接口
@@ -105,8 +108,9 @@ FindMyChild/
 │       └── ui/                       # 表现层
 │           ├── compass/              #   指南针页面
 │           ├── component/            #   自定义组件 (CompassView)
-│           ├── navigation/           #   导航图与路由
+│           ├── navigation/           #   导航图与路由 (NavRoutes.kt)
 │           ├── pairing/              #   配对流程 (QR 生成/扫描)
+│           ├── permission/           #   定位权限门
 │           ├── role/                 #   角色选择
 │           └── theme/                #   主题与样式
 │
@@ -192,15 +196,17 @@ FindMyChild/
 
 ### 2. 配置服务器地址
 
-编辑 `app/src/main/java/com/findmychild/app/data/remote/RelayConfig.kt`：
+服务器地址通过 DataStore 持久化，**默认值为模拟器地址 `ws://10.0.2.2:8080/ws`**，无需改代码重新编译。
 
-```kotlin
-val wsUrl: String
-    get() = "ws://<你的电脑IP>:8080/ws"  // 👈 改这里
-```
+常用地址：
 
-- **模拟器**：使用 `ws://10.0.2.2:8080/ws`
-- **真机（同 WiFi）**：使用 `ws://192.168.x.x:8080/ws`
+- **模拟器**：`ws://10.0.2.2:8080/ws`（默认值，开箱可用）
+- **真机（同 WiFi）**：`ws://192.168.x.x:8080/ws`
+- **生产环境**：`wss://your-server.com/ws`（v0.3.0-dev 起支持）
+
+> ⚠️ **设置界面尚未实现**（路线图 M4-05）。真机调试时，当前只能改
+> `SettingsDataStore.DEFAULT_SERVER_URL` 后重新构建；运行期改地址的通道
+> （DataStore 的 `server_url` 键）已经打通，只是没有暴露入口。
 
 ### 3. 构建并安装
 
@@ -270,12 +276,29 @@ val wsUrl: String
 - [x] 修复 relay-server `decodeFromJsonElement` API 兼容性
 - [x] 添加 launcher 图标资源
 
+### 已修复（0.2.0-dev）
+
+> 本轮多数问题是在"第一次真正跑测试"时暴露的。此前记录的编译验证命令不跑测试，
+> 所以测试套件从未被验证过。详见 [CHANGELOG.md](CHANGELOG.md) 与
+> [doc/tracking/TASK_TRACKING.md](doc/tracking/TASK_TRACKING.md) 第 10 节。
+
+- [x] **服务端消息缺 `type` 字段**（P0）——服务端发出的消息全被客户端按 `type` 路由时丢弃，指南针永远收不到位置
+- [x] **定位权限从未申请**（P0）——未授权时 `requestLocationUpdates` 抛 `SecurityException` 导致家长端崩溃
+- [x] **指南针箭头东西方向镜像**（P1）——与 DESIGN §4.3 公式矛盾；旋转几何收敛到 `screenAngleFromNorth()`
+- [x] **距离单位错配**（P1）——≥1km 时显示"1.2 米"，新增 `distanceUnit()`
+- [x] **孩子端冷启动不重连**（P1）——进程重启后页面显示"位置共享中"但实际未连接
+- [x] **`connect()` 不幂等**——重复调用会开第二个 socket 并导致服务端拒绝注册
+- [x] `LocationService` 重复注册 `LocationCallback`、同一位置上报多次
+- [x] 修复 15 个从未成功执行过的测试（缺 Robolectric runner、E2E 缺客户端引擎、2 条错误断言、mock 写法）
+
 ### 开发中
 
-- [ ] 单元测试与集成测试
+- [x] 单元测试与集成测试（125 个用例，CI 3 个 Job 全绿）
 
 ### 计划中
 
+- [ ] 服务器地址设置界面（DataStore 通道已打通，缺 UI 入口）
+- [ ] 位置上报位移过滤（>1 米才上报，减少流量）
 - [ ] 地图视图模式（指南针 + 地图双模式切换）
 - [ ] 位置历史轨迹回放
 - [ ] 多子女同时追踪

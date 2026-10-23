@@ -1,6 +1,6 @@
 # 任务执行跟踪 — FindMyChild
 
-> 版本: 0.2.0-dev | 最后更新: 2026-10-22
+> 版本: 0.2.0-dev | 最后更新: 2026-10-23
 
 ---
 
@@ -152,14 +152,20 @@
 
 | 测试文件 | 测试用例数 | 覆盖模块 |
 |:--------|:---------:|:--------|
-| `CalculateBearingUseCaseTest.kt` | 14 | Domain (方位角 + 距离 + normalizeAngle) |
-| `CompassViewUtilTest.kt` | 28 | UI 工具函数 (shortestAngle + distanceColor + formatDistance + bearingToText) |
-| `SessionManagerTest.kt` | 15 | relay-server (注册/配对/转发/断开) |
-| `SettingsDataStoreTest.kt` | 13 | Data (角色/配对/服务器地址/clearAll) |
-| `RelayWebSocketManagerTest.kt` | 4 | Data (连接状态/disconnect) |
-| `RelayServerE2ETest.kt` | 6 | relay-server (端到端通信) |
+| `CalculateBearingUseCaseTest.kt` | 20 | Domain (方位角 + 距离 + normalizeAngle) |
+| `CompassViewUtilTest.kt` | 39 | UI 几何与工具 (screenAngleFromNorth + shortestAngle + distanceColor + formatDistance + distanceUnit + bearingToText) |
+| `SessionManagerTest.kt` | 17 | relay-server (注册/配对/转发/断开) |
+| `SettingsDataStoreTest.kt` | 14 | Data (角色/配对/服务器地址/clearAll) |
+| `RelayWebSocketManagerTest.kt` | 8 | Data (连接状态 / disconnect / connect 幂等) |
+| `RelayServerE2ETest.kt` | 5 | relay-server (端到端通信) |
 | `CompassViewTest.kt` | 7 | UI (CompassView 渲染) |
-| **合计** | **87** | — |
+| `LocationPermissionTest.kt` | 7 | UI (定位权限判据 + 权限门三态) |
+| `ChildActiveViewModelTest.kt` | 5 | UI (冷启动重连 / 连接状态) |
+| `CompassViewModelTest.kt` | 3 | UI (ensureConnected) |
+| **合计** | **125** | — |
+
+> ⚠️ 0.2.0-dev 首次记录时写的是 87 个用例，那个数字没有跑通过——其中 15 个从未成功执行过
+> （见第 10 节）。上表是 2026-10-23 修复后重新统计的真实值。
 
 ### 4.4 代码变更
 
@@ -234,6 +240,12 @@
 | 2026-10-22 | 创建 v0.1.1-dev 任务记录，16 个任务全部标记完成 | CatPaw AI |
 | 2026-10-22 | 完成 v0.2.0-dev 测试与质量保障，9 个任务全部完成，新增 87 个测试用例 | CatPaw AI |
 | 2026-10-22 | 配置 CI/CD 流水线（GitHub Actions），3 个 Job | CatPaw AI |
+| 2026-10-23 | 修复 15 个失败测试：补 Robolectric runner、E2E 改用 createClient、修正 2 条错误断言、修 mock 写法；测试数 87 → 96 | Claude |
+| 2026-10-23 | 修复服务端 `encodeDefaults` 导致 `type` 字段缺失的协议 bug——服务端消息此前全被客户端丢弃，指南针收不到位置 | Claude |
+| 2026-10-23 | 修复指南针箭头东西方向镜像 + km 距离单位错配；旋转几何收敛到 `screenAngleFromNorth()` 单一点 | Claude |
+| 2026-10-23 | 接入定位权限申请（此前从未申请，未授权时 `requestLocationUpdates` 抛 SecurityException 会崩）；`LocationService` 上报移至 onCreate 避免重复回调 | Claude |
+| 2026-10-23 | 孩子端冷启动重连 + `connect()` 同会话同角色幂等；测试数 96 → 125 | Claude |
+| 2026-10-23 | 文档对齐：README 服务器配置说明、模块结构、DESIGN 颜色表/性能参数、TASK_PLAN v0.2.0 状态 | Claude |
 
 ---
 
@@ -255,3 +267,68 @@ v0.5.0-dev  ░░░░░░░░░░░░░░░░░░░░    0%  
 ```
 
 **下一步行动**: 启动 v0.3.0-dev 安全加固与生产化里程碑，优先完成 P1 级安全任务（WSS 加密传输、WebSocket 认证、QR 码签名）。
+
+---
+
+## 10. 2026-10-23 缺陷修复记录（未纳入编号任务）
+
+这些是通读代码 + 首次真正跑测试时发现的缺陷，不属于任何编号任务，单独记录。
+
+### 10.1 测试体系从未通过（15/96 失败）
+
+`ci.yml` 一直接跑 `:relay-server:test` 和 `:app:testDebugUnitTest`，但 0.2.0-dev 记录的
+"编译验证"用的是 `assembleDebug` / `installDist`——这两个任务**不跑测试**，所以当时看到 ✅，
+而唯一会跑测试的 CI 从未绿过。GitHub 上第一次运行（`4c3c647`）即为 failure，且 `build` job
+因 `needs` 依赖被跳过，从未执行。
+
+| 类别 | 数量 | 根因 |
+|------|----|------|
+| `CompassViewTest` 全挂 | 7 | 缺 `@RunWith(RobolectricTestRunner::class)`，跑在裸 JVM 上 `Build.FINGERPRINT` 为 null |
+| `RelayServerE2ETest` 全挂 | 5 | test classpath 无 ktor client 引擎，回退 `DefaultEngine`；且硬编码 `localhost:8080` 而 testApplication 用随机端口 |
+| 断言与实现矛盾 | 2 | `normalizeAngle(180)` 与 `shortestAngle(180, 0)` 的期望值写错 |
+| mock 写法不成立 | 1 | `RelayConfig` 构造时即读取 `serverUrl` Flow，relaxed mock 不发射 |
+
+### 10.2 服务端消息协议 bug（P0）
+
+`WebSocketHandler` 的 `Json { ignoreUnknownKeys = true; isLenient = true }` 不编码默认值字段，
+而所有消息的 `type` 都有默认值 → 实际发出 `{"status":"WAITING"}`。客户端 `handleMessage()`
+纯按 `type` 路由，缺字段整条丢弃。**家长端因此永远收不到 `PEER_LOCATION`，指南针永远显示
+"等待位置..."**；也解释了 `QrGenerationScreen` 为何靠 `delay(500)` + `Connected` 跳转
+（因为 `PAIRED` 根本收不到）。修复：显式 `encodeDefaults = true`。
+
+### 10.3 指南针箭头方向镜像 + 距离单位错配
+
+- 箭头旋转传了负号，与 DESIGN §4.3 的公式矛盾，东西方向反向；正北/正南因 180° 对称看不出
+- ≥1000m 时单位仍硬编码"米"，显示成"1.2 米"；原测试只断言数字没断言单位，所以漏过
+- 重构：刻度盘与箭头统一从 `screenAngleFromNorth(compassAngle, heading)` 推导，
+  删除 `CompassState.arrowRotation`，几何只有一处决定符号
+
+### 10.4 定位权限从未申请（P0）
+
+全 App 只申请了相机权限。`LocationProvider` 在 `@SuppressLint("MissingPermission")` 下调
+`requestLocationUpdates()`，未授权抛 `SecurityException`，而两个收集点都在
+`viewModelScope` / `lifecycleScope` → 家长端进指南针即崩。已接入 `LocationPermissionGate`，
+并在 `LocationProvider` 内做无权限降级（关闭 Flow 而非抛异常）。
+
+### 10.5 孩子端冷启动不重连 + 重复建连
+
+- 进程重启后 `ChildActiveViewModel` 没有 `ensureConnected()`，页面显示"位置共享中"但
+  WebSocket 没连、`sessionId` 为空，消息被服务端当未知会话丢弃
+- 修这个问题时发现 `connect()` 不幂等：扫码页连过一次 + `ensureConnected()` 会开第二个 socket，
+  旧的被覆盖而不关闭，服务端第二次 REGISTER 直接报"该会话已有孩子设备"——**会把正常配对流程搞坏**。
+  已在持有 mutex 的前提下对同会话同角色做幂等
+
+### 10.6 其他
+
+| 事项 | 说明 |
+|------|------|
+| `LocationService` 重复上报 | 原来在 `onStartCommand` 里 collect，每次 `startService` 都新增一个 `LocationCallback`；已移至 `onCreate` |
+| `.kotlin/` 被误提交 | `.gitignore` 只有 `*.kotlin_module`，已补 `.kotlin/` 并从未推送的提交中移除 |
+| 死代码 | `RelayWebSocketManager.pairingStatus` 无消费者、`LocationRepository.getLastKnownLocation()` 无调用点、`LocationData.userId` 从未赋值、`Color.kt` 中 `CompassGreen/CompassTeal/CompassOrange` 与 `CompassView` 硬编码色值重复 |
+
+### 10.7 验证
+
+```
+125 tests, 0 failed   （app 108 + relay-server 17）
+CI: 3 jobs 全绿（7dd9b93、c423c77 两次运行均 success）
+```

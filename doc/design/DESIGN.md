@@ -1,6 +1,6 @@
 # 设计文档 — FindMyChild
 
-> 版本: 0.1.1-dev | 更新日期: 2026-10-22
+> 版本: 0.2.0-dev | 更新日期: 2026-10-23
 
 ---
 
@@ -169,6 +169,14 @@ FindMyChild/
 { "type": "ERROR", "message": "该会话已有家长设备" }
 ```
 
+> ⚠️ **`type` 必须实际出现在报文里。** 服务端用 kotlinx.serialization，
+> 而 `Json { ignoreUnknownKeys = true; isLenient = true }` 这个配置下
+> **带默认值的字段不会被编码**——`type` 正好都是有默认值的，结果报文只剩
+> `{"status":"WAITING"}`。客户端 `RelayWebSocketManager.handleMessage()` 是纯按
+> `type` 路由的，缺字段就整条丢弃，表现为"收不到任何服务端消息"。
+> 因此 `WebSocketHandler` 的 `json` 必须显式 `encodeDefaults = true`。
+> 反方向（客户端 → 服务端）用 Moshi，Kotlin 默认值已实体化成对象字段，不受影响。
+
 ### 3.3 连接生命周期
 
 ```
@@ -191,7 +199,8 @@ FindMyChild/
      └────────┬───────┘  └──────┬───────┘  └──────┬───────┘
               │                  │                  │
      ┌────────▼───────┐  ┌──────▼───────┐  ┌──────▼───────┐
-     │  QR 生成/扫描   │  │ ensureConnect │  │ 启动定位服务  │
+     │  QR 生成/扫描   │  │ ensureConnect │  │ 申请定位权限  │
+     │                 │  │               │  │ →启动定位服务 │
      └────────┬───────┘  └──────┬───────┘  └──────┬───────┘
               │                  │                  │
               └──────────────────┼──────────────────┘
@@ -267,11 +276,13 @@ fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): F
 
 | 距离范围 | 颜色 | 含义 |
 |:-------:|:----:|:-----|
-| < 5m | 绿色 (#2E7D32) | 非常近 |
-| < 20m | 浅绿 (#66BB6A) | 较近 |
-| < 50m | 黄色 (#FBC02D) | 适中 |
-| < 200m | 橙色 (#F57C00) | 较远 |
-| ≥ 200m | 红色 (#D32F2F) | 远 |
+| < 5m | 绿色 (#4CAF50) | 非常近 |
+| < 20m | 浅绿 (#8BC34A) | 较近 |
+| < 50m | 黄色 (#FFC107) | 适中 |
+| < 200m | 橙色 (#FF9800) | 较远 |
+| ≥ 200m | 红色 (#F44336) | 远 |
+
+> 色值以 `CompassView.distanceColor()` 为准（该函数有单元测试锁定边界）。
 
 ---
 
@@ -327,10 +338,14 @@ fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): F
 
 | 项目 | 状态 | 说明 |
 |:----:|:----:|:-----|
-| 服务器地址动态配置 | ✅ 已完成 | DataStore 持久化，运行时可修改 |
+| 服务器地址动态配置 | ✅ 已完成 | DataStore 持久化，运行时可修改（尚无设置界面） |
 | 会话过期清理 | ✅ 已完成 | 30 分钟超时自动清除 |
-| 权限请求流程 | ✅ 已完成 | 相机权限拒绝后 UI 反馈 |
+| 相机权限请求流程 | ✅ 已完成 | 拒绝后 UI 反馈 + 重试 |
+| 定位权限请求流程 | ✅ 已完成 | 家长端与孩子端均接入 `ui/permission/LocationPermissionGate` |
 | WebSocket 断开清理 | ✅ 已完成 | 退出时正确断开连接和清除状态 |
+| 冷启动连接恢复 | ✅ 已完成 | 两端 `ensureConnected()`，且 `connect()` 对同会话同角色幂等 |
+| 消息协议 `type` 字段 | ✅ 已修复 | 服务端 `encodeDefaults = true`，见 3.2 的说明 |
+| 未授权时定位降级 | ✅ 已完成 | `LocationProvider` 无权限时关闭 Flow 而非抛 `SecurityException` |
 
 ### 7.2 待实现
 
@@ -384,14 +399,16 @@ App 启动
 
 ### 9.1 位置上报频率
 
-- 孩子端定位服务：每 2 秒更新一次 GPS 位置
-- 位置变化超过 1 米才上报（减少无效流量）
+- 孩子端定位服务：`PRIORITY_HIGH_ACCURACY`，间隔 5s，最快 2s（见 `LocationProvider`）
+- `setWaitForAccurateLocation(true)`：等待高精度定位结果后再下发
+- **尚未实现位移过滤**：每个回调都会上报。设计初衷是"变化超过 1 米才上报"以减少流量，
+  当前版本没有这层过滤，属于待优化项
 
 ### 9.2 UI 刷新策略
 
 - 指南针箭头旋转使用 `animateFloatAsState` + `FastOutSlowInEasing`
 - 距离文字直接更新，无需动画
-- 传感器数据采样间隔：最快 100ms
+- 传感器采样间隔：`SENSOR_DELAY_GAME`（约 20ms），磁力计 + 加速度计融合后得到朝向
 
 ### 9.3 后台保活
 

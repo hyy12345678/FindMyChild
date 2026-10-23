@@ -6,6 +6,91 @@
 
 ---
 
+## [0.2.0-dev] - 2026-10-23
+
+### 🐛 严重缺陷修复
+
+> 本轮问题大多在"第一次真正跑测试"时暴露。此前 0.2.0-dev 记录的编译验证用的是
+> `assembleDebug` / `installDist`，这两个任务不跑测试，所以测试套件从未被验证过，
+> CI 自建立起也一直是红的（`build` job 因依赖失败被跳过，从未执行）。
+
+#### P0 — 服务端消息协议：`type` 字段缺失
+
+- `WebSocketHandler` 的 `Json { ignoreUnknownKeys = true; isLenient = true }` 不编码带默认值的字段，
+  而所有消息类型的 `type` 都有默认值，实际报文只有 `{"status":"WAITING"}`
+- 客户端 `RelayWebSocketManager.handleMessage()` 纯按 `type` 路由，缺字段即整条丢弃
+  → **家长端永远收不到 `PEER_LOCATION`，指南针永远显示"等待位置..."**
+- 这也解释了 `QrGenerationScreen` 为何用 `delay(500)` + `Connected` 状态跳转（因为 `PAIRED` 根本收不到）
+- 修复：显式 `encodeDefaults = true`，并在 DESIGN §3.2 记录这个陷阱
+
+#### P0 — 定位权限从未申请
+
+- 全 App 只申请了相机权限；`LocationProvider` 在 `@SuppressLint("MissingPermission")` 下调
+  `requestLocationUpdates()`，未授权时抛 `SecurityException`
+- 两个收集点分别在 `viewModelScope` 和 `lifecycleScope`，异常无人捕获 → 家长端一进指南针页即崩溃
+- 新增 `ui/permission/LocationPermission.kt`：可复用的权限门，家长端与孩子端共用；
+  拒绝后提供重试，首次拒绝后额外提供系统设置入口
+- `LocationProvider` 增加降级：无权限时关闭 Flow 而非抛异常
+
+#### P1 — 指南针箭头方向镜像
+
+- `CompassView` 箭头旋转传了负号，与 DESIGN §4.3 公式矛盾，导致**东西方向反向**
+  （目标在正东时箭头指向西，而文字显示"正东"）；正北/正南因 180° 对称所以一直没被发现
+- 重构：刻度盘与箭头统一由 `screenAngleFromNorth(compassAngle, heading)` 推导，
+  删除 `CompassState.arrowRotation`，旋转几何收敛到单一真值来源
+
+#### P1 — 距离单位错配
+
+- ≥1000m 时单位仍硬编码"米"，界面显示"1.2 米"
+- 新增 `distanceUnit()`，与 `formatDistance()` 在同一个阈值上切换
+
+#### P1 — 孩子端冷启动不重连
+
+- 进程被杀后 `StartupViewModel` 凭本地配对信息直接路由到 `ChildActive`，
+  但 `ChildActiveViewModel` 没有 `ensureConnected()`，WebSocket 未连接、`sessionId` 为空，
+  位置消息被服务端当未知会话丢弃——页面却显示"位置共享中"
+- 修复时发现 `connect()` 不幂等：扫码页连过一次后 `ensureConnected()` 会开第二个 socket，
+  旧的被覆盖而不关闭，服务端第二次 REGISTER 报"该会话已有孩子设备"。
+  已在 mutex 保护下对同会话同角色做幂等
+
+#### P2 — `LocationService` 重复上报
+
+- 原来在 `onStartCommand` 中 collect，而它每次 `startService` 都会回调，
+  导致重复注册 `LocationCallback`、同一位置上报多次；已移至 `onCreate`
+
+### 🧪 测试体系修复
+
+15 个测试从未成功执行过（此前统计的 87 个用例中）：
+
+| 类别 | 数量 | 根因 |
+|------|----|------|
+| `CompassViewTest` 全挂 | 7 | 缺 `@RunWith(RobolectricTestRunner::class)`，裸 JVM 上 `Build.FINGERPRINT` 为 null |
+| `RelayServerE2ETest` 全挂 | 5 | test classpath 无 ktor client 引擎；且硬编码 `localhost:8080` 而 testApplication 用随机端口 |
+| 断言与实现矛盾 | 2 | `normalizeAngle(180)`、`shortestAngle(180, 0)` 期望值写错 |
+| mock 写法不成立 | 1 | `RelayConfig` 构造时即读取 `serverUrl` Flow，relaxed mock 不发射 |
+
+E2E 测试改用 `testApplication` 的 `createClient` + 相对路径 `/ws`，不再需要额外客户端引擎依赖。
+`app/build.gradle.kts` 增加 `debugImplementation(compose-ui-test-manifest)`。
+
+### ✅ 新增测试覆盖
+
+- `screenAngleFromNorth()`：四个基本方位 × 三种设备朝向、360° 跨界最短路径、取值范围、
+  以及"换基往返一致性"不变量（这条才是符号翻转的守门测试）
+- `distanceUnit()`：与 `formatDistance()` 阈值一致性
+- `LocationPermissionTest`：权限判据（fine / coarse / 无关权限）+ 权限门三种状态
+- `ChildActiveViewModelTest` / `CompassViewModelTest`：两端 `ensureConnected()`
+- `RelayWebSocketManagerTest`：`connect()` 幂等性（同会话同角色只开一个 socket；
+  不同会话 / 不同角色 / 断开后重连仍开新 socket）
+
+### 📊 验证
+
+```
+测试: 125 passed, 0 failed（app 108 + relay-server 17）
+CI:   3 jobs 全绿（Relay Server Tests / Android Unit Tests / Build Debug APK & Relay Server）
+```
+
+---
+
 ## [0.1.1-dev] - 2026-10-22
 
 ### Bug 修复与安全加固
@@ -115,8 +200,10 @@ FindMyChild 首个开发预览版本，搭建了从配对到指南针追踪的�
 
 | 版本 | 日期 | 说明 |
 |:----:|:----:|:-----|
+| [0.2.0-dev] | 2026-10-23 | 测试体系修复 + 服务端协议/指南针/定位权限等严重缺陷 |
 | [0.1.1-dev] | 2026-10-22 | Bug 修复 + 安全加固 + 代码清理 |
 | [0.1.0-dev] | 2026-07-01 | 开发预览版，搭建完整代码框架，尚未正式发布 |
 
+[0.2.0-dev]: https://github.com/your-org/FindMyChild/releases/tag/v0.2.0-dev
 [0.1.1-dev]: https://github.com/your-org/FindMyChild/releases/tag/v0.1.1-dev
 [0.1.0-dev]: https://github.com/your-org/FindMyChild/releases/tag/v0.1.0-dev
