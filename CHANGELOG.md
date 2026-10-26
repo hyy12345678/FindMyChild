@@ -155,17 +155,6 @@
 E2E 测试改用 `testApplication` 的 `createClient` + 相对路径 `/ws`，不再需要额外客户端引擎依赖。
 `app/build.gradle.kts` 增加 `debugImplementation(compose-ui-test-manifest)`。
 
-#### P1 — 指南针页同样不观察配对状态，孩子离开后仍显示"已连接"
-
-双端真机联调时把孩子端 `force-stop` 掉，家长端指南针页纹丝不动，依旧"已连接"。
-`CompassViewModel` 只 `observeConnectionState()` + `observePeerLocation()`，没有
-`observePairingStatus()`——而孩子切后台 / 关机 / 点"停止共享"时，家长自己的 socket
-毫发无损，服务端发来的 `DISCONNECTED` 是唯一能看出"对方走了"的信号，却无人订阅。
-这与上面第 1 条是同一类错误的另一个化身：把"自己这一侧的连接状态"当成"对方在不在"。
-
-修复：`CompassViewModel` 在 `init` 里订阅配对状态（不放 `startObserving()`——那个由定位
-权限就绪触发，而配对状态与定位权限无关），`ConnectionStatusBar` 改为配对状态优先。
-
 ### ✅ 新增测试覆盖
 
 - `screenAngleFromNorth()`：四个基本方位 × 三种设备朝向、360° 跨界最短路径、取值范围、
