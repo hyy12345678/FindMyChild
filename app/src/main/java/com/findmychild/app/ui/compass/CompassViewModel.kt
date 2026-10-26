@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.findmychild.app.domain.model.CompassState
 import com.findmychild.app.domain.model.ConnectionState
 import com.findmychild.app.domain.model.LocationData
+import com.findmychild.app.domain.model.PairingStatus
 import com.findmychild.app.domain.repository.LocationRepository
 import com.findmychild.app.domain.repository.SettingsRepository
 import com.findmychild.app.domain.repository.SyncRepository
@@ -33,12 +34,34 @@ class CompassViewModel @Inject constructor(
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
+    /** null = 还没收到服务端的配对状态 */
+    private val _pairingStatus = MutableStateFlow<PairingStatus?>(null)
+    val pairingStatus: StateFlow<PairingStatus?> = _pairingStatus.asStateFlow()
+
     private var observeJob: Job? = null
     private var myLastLocation: LocationData? = null
     private var peerLastLocation: LocationData? = null
 
     init {
         ensureConnected()
+        observePairingStatus()
+    }
+
+    /**
+     * 观察配对状态。
+     *
+     * 连接状态只说明家长自己的 socket 通着。孩子把应用切到后台、关机、点"停止共享"时，
+     * 家长这一侧毫发无损，服务端发来的 DISCONNECTED 是唯一能看出"对方走了"的信号。
+     * 早先只看连接状态，孩子离开后指南针页一直显示"已连接"，家长无从判断。
+     *
+     * 不放在 [startObserving] 里：它由定位权限就绪触发，而配对状态与定位权限无关。
+     */
+    private fun observePairingStatus() {
+        viewModelScope.launch {
+            syncRepository.observePairingStatus().collect { status ->
+                _pairingStatus.value = status
+            }
+        }
     }
 
     /**
@@ -110,6 +133,7 @@ class CompassViewModel @Inject constructor(
             settingsRepository.clearAll()
             _compassState.value = CompassState()
             _connectionState.value = ConnectionState.Disconnected
+            _pairingStatus.value = null
         }
     }
 }

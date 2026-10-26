@@ -263,6 +263,9 @@ FindMyChild/
 服务端对家长回的仍然是 `PAIRING_STATUS(status = "WAITING")`。因此：
 
 - 家长端二维码页、孩子端扫码页的自动跳转，判据只能是 `PAIRING_STATUS == PAIRED`
+- **指南针页的"对方在不在"同样只能看它。** `CompassViewModel` 早先也只订阅连接状态，
+  于是孩子切后台 / 关机 / 点"停止共享"时家长端一直显示"已连接"——家长自己的 socket
+  在这些情况下毫发无损。两个页面犯的是同一个错，改的时候要一起改
 - 连接状态只用于显示"正在建立连接... / 连接出错"这类自己这一侧的状态
 - `PairingStatus.fromWire()` 对未知值一律按 `WAITING` 处理：宁可多等，也不要误跳
 

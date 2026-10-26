@@ -3,6 +3,7 @@ package com.findmychild.app.ui.compass
 import com.findmychild.app.domain.model.CompassState
 import com.findmychild.app.domain.model.ConnectionState
 import com.findmychild.app.domain.model.PairingInfo
+import com.findmychild.app.domain.model.PairingStatus
 import com.findmychild.app.domain.model.UserRole
 import com.findmychild.app.domain.repository.LocationRepository
 import com.findmychild.app.domain.repository.SettingsRepository
@@ -12,10 +13,13 @@ import com.findmychild.app.testutil.MainDispatcherRule
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -50,6 +54,7 @@ class CompassViewModelTest {
         every { locationRepository.observeDeviceHeading() } returns emptyFlow()
         every { syncRepository.observePeerLocation() } returns emptyFlow()
         every { syncRepository.observeConnectionState() } returns emptyFlow()
+        every { syncRepository.observePairingStatus() } returns emptyFlow()
     }
 
     @Test
@@ -82,5 +87,42 @@ class CompassViewModelTest {
         val vm = viewModel()
         assertTrue(vm.compassState.value == CompassState())
         assertTrue(vm.connectionState.value == ConnectionState.Disconnected)
+    }
+
+    /**
+     * 回归：指南针页早先只观察连接状态。孩子切后台/关机/点"停止共享"时家长自己的 socket
+     * 毫发无损，页面就一直显示"已连接"，家长无从判断对方已经走了。
+     * 配对状态必须被观察到，且与定位权限无关（所以它在 init 里订阅，不在 startObserving 里）。
+     */
+    @Test
+    fun `pairing status is observed without waiting for location permission`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            every { settingsRepository.getPairingInfo() } returns flowOf(null)
+            val status = MutableSharedFlow<PairingStatus>(replay = 1)
+            every { syncRepository.observePairingStatus() } returns status
+
+            val vm = viewModel()
+            assertNull("还没收到任何配对状态", vm.pairingStatus.value)
+
+            status.emit(PairingStatus.DISCONNECTED)
+            advanceUntilIdle()
+
+            assertEquals(PairingStatus.DISCONNECTED, vm.pairingStatus.value)
+        }
+
+    @Test
+    fun `disconnect clears the pairing status`() = runTest(mainDispatcherRule.dispatcher) {
+        every { settingsRepository.getPairingInfo() } returns flowOf(null)
+        every { syncRepository.observePairingStatus() } returns
+            flowOf(PairingStatus.PAIRED)
+
+        val vm = viewModel()
+        advanceUntilIdle()
+        assertEquals(PairingStatus.PAIRED, vm.pairingStatus.value)
+
+        vm.disconnect()
+        advanceUntilIdle()
+
+        assertNull(vm.pairingStatus.value)
     }
 }

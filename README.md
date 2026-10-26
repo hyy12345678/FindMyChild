@@ -302,10 +302,11 @@ FindMyChild/
 - [x] **拿"已连接"当"已配对"，二维码一闪而过**（P0）——`ConnectionState.Connected` 只代表自己的 socket 通了，孩子没扫码时服务端回的是 `WAITING`；跳转改由 `PAIRING_STATUS` 的 `PAIRED` 触发
 - [x] **`Channel(CONFLATED).receiveAsFlow()` 是单消费者**（P0）——元素被取走就消失，指南针页后订阅只能停在初始值 `Disconnected`，界面显示"连接已断开"而 socket 其实活着；改为 `StateFlow` / `SharedFlow(replay = 1)`
 - [x] **`startDestination` 在会话中途被反复改写**（P1）——任何 DataStore 写入都重算起始路由，导致 NavHost 重建、sessionId 重新生成、孩子扫到的码失效；改为一次性决定
+- [x] **指南针页也不观察配对状态**（P1）——双端联调时发现：孩子离开后家长端仍显示"已连接"，因为 `CompassViewModel` 只看自己的连接状态；与上一条同源，一并修复
 
 ### 开发中
 
-- [ ] 单元测试与集成测试（144 个用例，CI 3 个 Job 全绿）
+- [ ] 单元测试与集成测试（146 个用例，CI 3 个 Job 全绿）
 
 ### 计划中
 

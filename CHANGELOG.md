@@ -54,6 +54,17 @@
   让新的一次尝试一上来就报"家长设备已断开"；`connect()` 真正发起连接前
   `resetReplayCache()`，让状态只属于当前这次连接
 
+#### P1 — 指南针页同样不观察配对状态，孩子离开后仍显示"已连接"
+
+双端真机联调时把孩子端 `force-stop` 掉，家长端指南针页纹丝不动，依旧"已连接"。
+`CompassViewModel` 只 `observeConnectionState()` + `observePeerLocation()`，没有
+`observePairingStatus()`——而孩子切后台 / 关机 / 点"停止共享"时，家长自己的 socket
+毫发无损，服务端发来的 `DISCONNECTED` 是唯一能看出"对方走了"的信号，却无人订阅。
+这与上面第 1 条是同一类错误的另一个化身：把"自己这一侧的连接状态"当成"对方在不在"。
+
+修复：`CompassViewModel` 在 `init` 里订阅配对状态（不放 `startObserving()`——那个由定位
+权限就绪触发，而配对状态与定位权限无关），`ConnectionStatusBar` 改为配对状态优先。
+
 ### ✅ 新增测试覆盖
 
 - `StartupViewModelTest`（8 例）：五种角色 × 配对状态的起始路由，外加两条回归护栏——
@@ -63,12 +74,17 @@
 - `RelayWebSocketManagerTest` 补 5 例：后订阅者仍能拿到当前连接状态、
   最近一条配对状态、最近一条位置；未知配对状态按 `WAITING` 处理；
   重新建连不继承上一次的配对状态
+- `CompassViewModelTest` 补 2 例：配对状态在 `init` 里就订阅（不等定位权限）；
+  `disconnect` 清空配对状态
 
 ### 📊 验证
 
 ```
-测试: 144 passed, 0 failed（app 122 + relay-server 22）
+测试: 146 passed, 0 failed（app 124 + relay-server 22）
 真机: 家长端停在二维码页，状态"已连接，等待小朋友扫码..."，持续 15s 不跳走
+双端: 模拟器当家长 + 真机当孩子，扫码后双方正确跳转；位置链路与指南针几何正确
+       （孩子在正东 ~1.1km → 显示"1.0 公里 / 正东方向"，箭头指向右、N 在顶部）
+       三种配对状态均已验证：无孩子"等待小朋友连接..." / 孩子在"已连接" / 孩子离开"对方已断开"
 ```
 
 ---
@@ -138,6 +154,17 @@
 
 E2E 测试改用 `testApplication` 的 `createClient` + 相对路径 `/ws`，不再需要额外客户端引擎依赖。
 `app/build.gradle.kts` 增加 `debugImplementation(compose-ui-test-manifest)`。
+
+#### P1 — 指南针页同样不观察配对状态，孩子离开后仍显示"已连接"
+
+双端真机联调时把孩子端 `force-stop` 掉，家长端指南针页纹丝不动，依旧"已连接"。
+`CompassViewModel` 只 `observeConnectionState()` + `observePeerLocation()`，没有
+`observePairingStatus()`——而孩子切后台 / 关机 / 点"停止共享"时，家长自己的 socket
+毫发无损，服务端发来的 `DISCONNECTED` 是唯一能看出"对方走了"的信号，却无人订阅。
+这与上面第 1 条是同一类错误的另一个化身：把"自己这一侧的连接状态"当成"对方在不在"。
+
+修复：`CompassViewModel` 在 `init` 里订阅配对状态（不放 `startObserving()`——那个由定位
+权限就绪触发，而配对状态与定位权限无关），`ConnectionStatusBar` 改为配对状态优先。
 
 ### ✅ 新增测试覆盖
 

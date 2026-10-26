@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.findmychild.app.domain.model.ConnectionState
+import com.findmychild.app.domain.model.PairingStatus
 import com.findmychild.app.ui.component.CompassView
 import com.findmychild.app.ui.permission.LocationPermissionGate
 import com.findmychild.app.ui.permission.rememberLocationPermissionState
@@ -48,6 +49,7 @@ fun CompassScreen(
 ) {
     val compassState by viewModel.compassState.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
+    val pairingStatus by viewModel.pairingStatus.collectAsState()
     val permission = rememberLocationPermissionState()
 
     // 进入即申请：没有本机位置就算不出方位角，指南针也就没有意义。
@@ -70,7 +72,7 @@ fun CompassScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // === 顶部连接状态指示器 ===
-                ConnectionStatusBar(connectionState)
+                ConnectionStatusBar(connectionState, pairingStatus)
 
                 // === 指南针 ===
                 CompassView(
@@ -106,12 +108,19 @@ fun CompassScreen(
 }
 
 @Composable
-private fun ConnectionStatusBar(state: ConnectionState) {
-    val (text, color) = when (state) {
-        is ConnectionState.Disconnected -> "连接已断开" to MaterialTheme.colorScheme.error
-        is ConnectionState.Connecting -> "正在连接..." to MaterialTheme.colorScheme.secondary
-        is ConnectionState.Connected -> "已连接" to MaterialTheme.colorScheme.primary
-        is ConnectionState.Error -> "连接出错" to MaterialTheme.colorScheme.error
+private fun ConnectionStatusBar(state: ConnectionState, pairingStatus: PairingStatus?) {
+    // 配对状态优先：它才说明对方在不在。连接状态只代表家长自己这一侧的 socket——
+    // 孩子离开时它毫发无损，只看它会让页面一直显示"已连接"。
+    val (text, color) = when (pairingStatus) {
+        PairingStatus.PAIRED -> "已连接" to MaterialTheme.colorScheme.primary
+        PairingStatus.WAITING -> "等待小朋友连接..." to MaterialTheme.colorScheme.secondary
+        PairingStatus.DISCONNECTED -> "对方已断开" to MaterialTheme.colorScheme.error
+        null -> when (state) {
+            is ConnectionState.Disconnected -> "连接已断开" to MaterialTheme.colorScheme.error
+            is ConnectionState.Connecting -> "正在连接..." to MaterialTheme.colorScheme.secondary
+            is ConnectionState.Connected -> "正在加入会话..." to MaterialTheme.colorScheme.secondary
+            is ConnectionState.Error -> "连接出错" to MaterialTheme.colorScheme.error
+        }
     }
 
     Row(
