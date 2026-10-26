@@ -361,6 +361,6 @@ SOFTWARE.
 
 <br/>
 
-感谢 [CatPawAI](https://www.catpawai.com) 提供免费的模型算力 🐾
+感谢 [StepFun](https://platform.stepfun.com/) 提供免费的模型算力 🐾
 
 </div>
