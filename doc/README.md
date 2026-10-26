@@ -23,9 +23,9 @@ doc/
 
 | 文档 | 路径 | 内容概要 | 更新日期 |
 |:----:|:-----|:--------|:--------:|
-| 设计文档 | [design/DESIGN.md](design/DESIGN.md) | 系统架构、通信协议、核心算法、安全设计、UI 设计 | 2026-10-23 |
-| 任务计划 | [plan/TASK_PLAN.md](plan/TASK_PLAN.md) | 版本里程碑（v0.1.0 ~ v0.5.0）、任务分解、工时估算 | 2026-10-23 |
-| 任务执行跟踪 | [tracking/TASK_TRACKING.md](tracking/TASK_TRACKING.md) | 任务状态总览、执行记录、变更日志、进度仪表盘 | 2026-10-23 |
+| 设计文档 | [design/DESIGN.md](design/DESIGN.md) | 系统架构、通信协议、核心算法、安全设计、UI 设计 | 2026-10-26 |
+| 任务计划 | [plan/TASK_PLAN.md](plan/TASK_PLAN.md) | 版本里程碑（v0.1.0 ~ v0.5.0）、任务分解、工时估算 | 2026-10-26 |
+| 任务执行跟踪 | [tracking/TASK_TRACKING.md](tracking/TASK_TRACKING.md) | 任务状态总览、执行记录、变更日志、进度仪表盘 | 2026-10-26 |
 
 ---
 

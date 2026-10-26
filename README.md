@@ -152,6 +152,10 @@ FindMyChild/
     → 更新指南针 UI：方向箭头 + 距离显示
 ```
 
+> ⚠️ 双方页面自动跳转到指南针/孩子状态页的判据是 **`PAIRING_STATUS == PAIRED`**，
+> 不是"WebSocket 已连接"——自己这一侧的 socket 打开时，对端可能还没来，
+> 服务端回的是 `WAITING`。详见 [DESIGN §3.6](doc/design/DESIGN.md)。
+
 ---
 
 ## 技术栈
@@ -291,9 +295,17 @@ FindMyChild/
 - [x] `LocationService` 重复注册 `LocationCallback`、同一位置上报多次
 - [x] 修复 15 个从未成功执行过的测试（缺 Robolectric runner、E2E 缺客户端引擎、2 条错误断言、mock 写法）
 
+### 已修复（0.2.1-dev）
+
+> 真机联调暴露的三个串联问题。详见 [CHANGELOG.md](CHANGELOG.md)。
+
+- [x] **拿"已连接"当"已配对"，二维码一闪而过**（P0）——`ConnectionState.Connected` 只代表自己的 socket 通了，孩子没扫码时服务端回的是 `WAITING`；跳转改由 `PAIRING_STATUS` 的 `PAIRED` 触发
+- [x] **`Channel(CONFLATED).receiveAsFlow()` 是单消费者**（P0）——元素被取走就消失，指南针页后订阅只能停在初始值 `Disconnected`，界面显示"连接已断开"而 socket 其实活着；改为 `StateFlow` / `SharedFlow(replay = 1)`
+- [x] **`startDestination` 在会话中途被反复改写**（P1）——任何 DataStore 写入都重算起始路由，导致 NavHost 重建、sessionId 重新生成、孩子扫到的码失效；改为一次性决定
+
 ### 开发中
 
-- [x] 单元测试与集成测试（125 个用例，CI 3 个 Job 全绿）
+- [ ] 单元测试与集成测试（144 个用例，CI 3 个 Job 全绿）
 
 ### 计划中
 

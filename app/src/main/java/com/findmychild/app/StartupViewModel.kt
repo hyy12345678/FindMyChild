@@ -2,6 +2,7 @@ package com.findmychild.app
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.findmychild.app.domain.model.PairingInfo
 import com.findmychild.app.domain.model.UserRole
 import com.findmychild.app.domain.repository.SettingsRepository
 import com.findmychild.app.ui.navigation.NavRoute
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -18,25 +20,26 @@ class StartupViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
-    private val _startupRoute = MutableStateFlow(NavRoute.RoleSelection.route)
-    val startupRoute: StateFlow<String> = _startupRoute.asStateFlow()
+    private val _startupRoute = MutableStateFlow<String?>(null)
+    val startupRoute: StateFlow<String?> = _startupRoute.asStateFlow()
 
     init {
         viewModelScope.launch {
-            combine(
+            // 只读一次：startDestination 是"进程启动时该落在哪页"的一次性决定。
+            // 持续观察会让配对成功时写入的 sessionId 改变它，NavHost 重建、
+            // QrGenerationViewModel 重新创建并生成新 sessionId——孩子扫到的码随即失效。
+            _startupRoute.value = combine(
                 settingsRepository.getUserRole(),
                 settingsRepository.getPairingInfo()
             ) { role, pairingInfo ->
                 determineStartDestination(role, pairingInfo)
-            }.collect { route ->
-                _startupRoute.value = route
-            }
+            }.first()
         }
     }
 
     private fun determineStartDestination(
         role: UserRole?,
-        pairingInfo: com.findmychild.app.domain.model.PairingInfo?
+        pairingInfo: PairingInfo?
     ): String {
         // 没有选择角色 → 角色选择页
         if (role == null) {

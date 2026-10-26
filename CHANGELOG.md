@@ -6,6 +6,73 @@
 
 ---
 
+## [0.2.1-dev] - 2026-10-26
+
+### 🐛 配对流程三连 bug
+
+> 这三个问题串起来才是完整的事故：真机上点"我是家长"后二维码一闪而过，
+> 孩子根本来不及扫；即使扫上，指南针页又会显示"连接已断开"而 socket 其实活着。
+
+#### P0 — 拿"已连接"当"已配对"，二维码一闪而过
+
+- `QrGenerationScreen` 用 `ConnectionState.Connected` 触发跳转，外加一个
+  `delay(500)` 赌 `PAIRING_STATUS` 会在这 500ms 内到达
+- 但 `Connected` 只说明**家长自己的 socket 打开了**。孩子还没扫码时，服务端回的是
+  `PAIRING_STATUS(status = "WAITING")`——于是家长被立刻带去指南针页，二维码停留约 500ms
+- 修复：新增 `PairingStatus` 领域模型（含 `fromWire()`，未知值按 `WAITING` 处理：
+  宁可多等，也不要误跳），`SyncRepository.observePairingStatus()` 贯通到两端 UI，
+  跳转只在 `PAIRED` 时发生
+- 孩子端 `QrScanScreen` 有同样的乐观跳转（`uiState.isConnected` 由 `connect()` 返回后
+  直接置 true），同样改为由 `PAIRED` 触发；`connect()` 返回时 socket 可能还没打开，
+  更不能说明家长在不在线
+
+#### P0 — `Channel(CONFLATED).receiveAsFlow()` 是单消费者
+
+- `RelayWebSocketManager` 原来用三个 `Channel(CONFLATED).receiveAsFlow()` 暴露
+  连接状态、对端位置、配对状态
+- `receiveAsFlow()` 的元素**被取走就消失**：二维码页收掉 `Connected` 之后，
+  指南针页再订阅只会停在初始值 `Disconnected`——界面显示"连接已断开"而 socket 其实活着
+- 修复：`connectionState` 改 `MutableStateFlow`（本来就是"当前状态"）；
+  `peerLocation` / `pairingStatus` 没有"空"的初始值，改 `MutableSharedFlow(replay = 1)`
+  ——迟到的订阅者能补上最近一条，又不会因为一个占位 `null` 触发业务逻辑
+
+#### P1 — `startDestination` 在会话中途被反复改写
+
+- `StartupViewModel` 持续 `collect` `combine(getUserRole(), getPairingInfo())`，
+  于是任何一次 DataStore 写入都会重算 `startDestination`：选角色（`null → PARENT`）、
+  配对成功（`null → 有值`）、孩子断开（`clearAll`）都会触发
+- `startDestination` **只在建图时生效**，挂上去之后再改不会把用户带到已配对的那一页，
+  而反复改则会让 NavHost 重建、`QrGenerationViewModel` 重新创建并生成新 sessionId
+  ——孩子扫到的码随即失效
+- 修复：改为 `.first()` 一次性决定，`MainActivity` 在路由决定前显示加载态而非空白
+
+#### P2 — 重新扫码会叠订阅、并继承上一次的配对状态
+
+- `QrScanViewModel.onQrScanned()` 每次扫码都新起一个 `observePairingStatus()` 订阅，
+  断开后重新扫就会叠上去，`_uiState` 被多个订阅者重复写入；改为用一个 `Job` 接管
+- `pairingStatus` 是 `SharedFlow(replay = 1)`，上一次的 `DISCONNECTED` 会留在 replay 缓存里，
+  让新的一次尝试一上来就报"家长设备已断开"；`connect()` 真正发起连接前
+  `resetReplayCache()`，让状态只属于当前这次连接
+
+### ✅ 新增测试覆盖
+
+- `StartupViewModelTest`（8 例）：五种角色 × 配对状态的起始路由，外加两条回归护栏——
+  会话中途保存配对信息 / 清除配对都**不得**改变已决定的路由
+- `QrGenerationScreenTest`（4 例，Compose + Robolectric）：`WAITING` / `DISCONNECTED`
+  不跳转，`PAIRED` 跳转，以及"先 WAITING 后 PAIRED"的真实时序
+- `RelayWebSocketManagerTest` 补 5 例：后订阅者仍能拿到当前连接状态、
+  最近一条配对状态、最近一条位置；未知配对状态按 `WAITING` 处理；
+  重新建连不继承上一次的配对状态
+
+### 📊 验证
+
+```
+测试: 144 passed, 0 failed（app 122 + relay-server 22）
+真机: 家长端停在二维码页，状态"已连接，等待小朋友扫码..."，持续 15s 不跳走
+```
+
+---
+
 ## [0.2.0-dev] - 2026-10-23
 
 ### 🐛 严重缺陷修复

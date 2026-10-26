@@ -1,6 +1,6 @@
 # 任务执行跟踪 — FindMyChild
 
-> 版本: 0.2.0-dev | 最后更新: 2026-10-23
+> 版本: 0.2.1-dev | 最后更新: 2026-10-26
 
 ---
 
@@ -11,10 +11,11 @@
 | v0.1.0-dev 框架搭建 | 15 | 15 | 0 | 0 | 100% |
 | v0.1.1-dev Bug 修复与安全加固 | 16 | 16 | 0 | 0 | 100% |
 | v0.2.0-dev 测试与质量保障 | 9 | 9 | 0 | 0 | 100% |
+| v0.2.1-dev 配对流程缺陷修复 | 6 | 6 | 0 | 0 | 100% |
 | v0.3.0-dev 安全加固与生产化 | 8 | 0 | 0 | 8 | 0% |
 | v0.4.0-dev 功能扩展 | 7 | 0 | 0 | 7 | 0% |
 | v0.5.0-dev 跨平台与通信层升级 | 4 | 0 | 0 | 4 | 0% |
-| **合计** | **59** | **40** | **0** | **19** | **67.8%** |
+| **合计** | **65** | **46** | **0** | **19** | **70.8%** |
 
 ---
 
@@ -156,13 +157,15 @@
 | `CompassViewUtilTest.kt` | 39 | UI 几何与工具 (screenAngleFromNorth + shortestAngle + distanceColor + formatDistance + distanceUnit + bearingToText) |
 | `SessionManagerTest.kt` | 17 | relay-server (注册/配对/转发/断开) |
 | `SettingsDataStoreTest.kt` | 14 | Data (角色/配对/服务器地址/clearAll) |
-| `RelayWebSocketManagerTest.kt` | 8 | Data (连接状态 / disconnect / connect 幂等) |
+| `RelayWebSocketManagerTest.kt` | 15 | Data (连接状态 / disconnect / connect 幂等 / Flow 迟到订阅) |
 | `RelayServerE2ETest.kt` | 5 | relay-server (端到端通信) |
 | `CompassViewTest.kt` | 7 | UI (CompassView 渲染) |
 | `LocationPermissionTest.kt` | 7 | UI (定位权限判据 + 权限门三态) |
 | `ChildActiveViewModelTest.kt` | 5 | UI (冷启动重连 / 连接状态) |
 | `CompassViewModelTest.kt` | 3 | UI (ensureConnected) |
-| **合计** | **125** | — |
+| `StartupViewModelTest.kt` | 8 | UI (起始路由决策 + 会话中途不改变路由) |
+| `QrGenerationScreenTest.kt` | 4 | UI (配对状态驱动跳转) |
+| **合计** | **144** | — |
 
 > ⚠️ 0.2.0-dev 首次记录时写的是 87 个用例，那个数字没有跑通过——其中 15 个从未成功执行过
 > （见第 10 节）。上表是 2026-10-23 修复后重新统计的真实值。
@@ -246,6 +249,9 @@
 | 2026-10-23 | 接入定位权限申请（此前从未申请，未授权时 `requestLocationUpdates` 抛 SecurityException 会崩）；`LocationService` 上报移至 onCreate 避免重复回调 | Claude |
 | 2026-10-23 | 孩子端冷启动重连 + `connect()` 同会话同角色幂等；测试数 96 → 125 | Claude |
 | 2026-10-23 | 文档对齐：README 服务器配置说明、模块结构、DESIGN 颜色表/性能参数、TASK_PLAN v0.2.0 状态 | Claude |
+| 2026-10-26 | 修复"二维码一闪而过"：跳转判据从 `ConnectionState.Connected` 改为 `PAIRING_STATUS == PAIRED`，新增 `PairingStatus` 领域模型 | Claude |
+| 2026-10-26 | 修复 `Channel(CONFLATED).receiveAsFlow()` 单消费者问题：三条 Flow 改 `StateFlow` / `SharedFlow(replay = 1)`，指南针页不再误显"连接已断开" | Claude |
+| 2026-10-26 | 修复 `startDestination` 会话中途被改写：`StartupViewModel` 改为 `.first()` 一次性决定，`MainActivity` 加加载态；测试数 125 → 144 | Claude |
 
 ---
 
@@ -254,19 +260,21 @@
 ```
 项目整体进度
 ┌────────────────────────────────────────────────┐
-│ ███████████████████████████████░░░░░░░░░░░░░░░░ │  67.8%
-│ 40/59 tasks completed                          │
+│ ████████████████████████████████░░░░░░░░░░░░░░ │  70.8%
+│ 46/65 tasks completed                          │
 └────────────────────────────────────────────────┘
 
 v0.1.0-dev  ████████████████████  100%  ✅ 已完成
 v0.1.1-dev  ████████████████████  100%  ✅ 已完成
 v0.2.0-dev  ████████████████████  100%  ✅ 已完成
+v0.2.1-dev  ████████████████████  100%  ✅ 已完成
 v0.3.0-dev  ░░░░░░░░░░░░░░░░░░░░    0%  🔲 待开始
 v0.4.0-dev  ░░░░░░░░░░░░░░░░░░░░    0%  🔲 待开始
 v0.5.0-dev  ░░░░░░░░░░░░░░░░░░░░    0%  🔲 待开始
 ```
 
-**下一步行动**: 启动 v0.3.0-dev 安全加固与生产化里程碑，优先完成 P1 级安全任务（WSS 加密传输、WebSocket 认证、QR 码签名）。
+**下一步行动**: 先用两台设备（或模拟器 + 真机）跑通"孩子扫码 → 双端进指南针"的完整链路，
+补上 v0.2.1-dev 唯一未真机验证的部分；随后启动 v0.3.0-dev 安全加固与生产化里程碑。
 
 ---
 
@@ -332,3 +340,85 @@ v0.5.0-dev  ░░░░░░░░░░░░░░░░░░░░    0%  
 125 tests, 0 failed   （app 108 + relay-server 17）
 CI: 3 jobs 全绿（7dd9b93、c423c77 两次运行均 success）
 ```
+
+---
+
+## 11. 2026-10-26 配对流程缺陷修复记录（未纳入编号任务）
+
+> 真机联调暴露。三个问题单独看都不像同一个根因，串起来才是一次完整的事故。
+
+### 11.1 拿"已连接"当"已配对"，二维码一闪而过（P0）
+
+**现象**：真机点"我是家长"后，二维码停留约 500ms 就被带去指南针页，孩子根本来不及扫。
+
+**定位过程**：
+
+1. 设备 DataStore 里已有 `session_id = 4df2df2b-...`，relay 日志里能看到 netty channel
+   活动，但**没有应用层的 join 日志**——说明家长端连上过，孩子端从未加入
+2. 读 `QrGenerationScreen` 发现跳转判据是 `ConnectionState.Connected` + `delay(500)`
+3. `Connected` 在 `onOpen` 里就置位，只代表**家长自己的 socket 打开了**；
+   孩子还没扫码时服务端回的是 `PAIRING_STATUS(status = "WAITING")`
+4. 那 500ms `delay` 原本是在赌 `PAIRED` 会在这段时间内到达——但它不会来，因为孩子还没扫
+
+**修复**：
+
+- 新增 `domain/model/PairingStatus.kt`，`fromWire()` 对未知值一律按 `WAITING` 处理
+  （宁可多等，也不要误跳）
+- `SyncRepository.observePairingStatus()` 贯通到两端 UI
+- 家长端 `QrGenerationScreen`、孩子端 `QrScanScreen` 的自动跳转都只在 `PAIRED` 时发生；
+  状态文字改由配对状态优先描述
+- 孩子端原来还有一份乐观跳转：`uiState.isConnected` 在 `connect()` 返回后直接置 true。
+  `connect()` 是 `suspend` 函数，返回时 socket 可能还没 `onOpen`，更不能说明家长在不在线。
+  顺手删掉这个已死的字段
+
+### 11.2 `Channel(CONFLATED).receiveAsFlow()` 是单消费者（P0）
+
+**现象**：配对成功后进入指南针页，界面显示"连接已断开"，而 socket 其实活着。
+
+**根因**：`RelayWebSocketManager` 原来用三个 `Channel(CONFLATED).receiveAsFlow()`。
+`receiveAsFlow()` 的元素**被取走就消失**——二维码页收掉 `Connected` 之后，
+指南针页再订阅只会停在初始值 `Disconnected`。
+
+这类 bug 只在"同一进程内两个页面先后订阅同一个 `@Singleton`"时出现，单看任何一个页面
+都复现不了，所以它躲过了此前所有单页面测试。
+
+**修复**：按"迟到的订阅者要不要拿到最近一条"重新选型，并把理由写进 DESIGN §3.5：
+
+| Flow | 类型 | 理由 |
+|:-----|:-----|:-----|
+| `connectionState` | `StateFlow` | 连接状态是"当前状态"，天然有初始值 `Disconnected` |
+| `peerLocation` | `SharedFlow(replay = 1)` | 位置是事件流，没有"空位置"这个初始值 |
+| `pairingStatus` | `SharedFlow(replay = 1)` | 同上；且不能放占位值，否则会触发业务逻辑 |
+
+### 11.3 `startDestination` 在会话中途被反复改写（P1）
+
+**根因**：`StartupViewModel` 持续 `collect` `combine(getUserRole(), getPairingInfo())`，
+于是任何一次 DataStore 写入都会重算 `startDestination`：选角色（`null → PARENT`）、
+配对成功（`null → 有值`）、孩子断开（`clearAll`）都会触发。
+
+而 `NavHost` 的 `startDestination` **只在建图时生效**：挂上去之后再改它，不会把用户带到
+已配对的那一页（表现为冷启动回到角色选择页）；反复改则会让 NavHost 重建、
+`QrGenerationViewModel` 重建并生成**新的 sessionId**——孩子扫到的码随即失效。
+这大概也是"两个不同 sessionId 出现在同一个进程里"的来源。
+
+**修复**：改为 `combine(...).first()` 一次性决定；`MainActivity` 在路由决定前显示加载态，
+避免这几毫秒闪一下空白。
+
+### 11.4 新增测试
+
+| 文件 | 用例数 | 覆盖 |
+|:-----|:------:|:-----|
+| `StartupViewModelTest.kt` | 8 | 五种角色 × 配对状态的起始路由；外加两条回归护栏——会话中途保存/清除配对都不得改变已决定的路由 |
+| `QrGenerationScreenTest.kt` | 4 | Compose + Robolectric：`WAITING`/`DISCONNECTED` 不跳转，`PAIRED` 跳转，先 WAITING 后 PAIRED 的真实时序 |
+| `RelayWebSocketManagerTest.kt`（新增 5 例） | 15 | 后订阅者仍能拿到当前连接状态 / 最近一条配对状态 / 最近一条位置；未知配对状态按 `WAITING`；重新建连不继承上一次的配对状态 |
+
+### 11.5 验证
+
+```
+144 tests, 0 failed   （app 122 + relay-server 22）
+真机: 家长端停在二维码页，状态"已连接，等待小朋友扫码..."，持续 15s 不跳走（此前约 500ms 即跳走）
+```
+
+> ⚠️ 尚未验证的部分：孩子端扫码 → 双端进指南针的完整链路。当前只连了一台设备，
+> 需要两台设备（或模拟器 + 真机）才能跑通。孩子端的改动与家长端同源、有单元测试覆盖，
+> 但真机表现待确认。

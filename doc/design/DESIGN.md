@@ -233,6 +233,42 @@ FindMyChild/
 
 重连实现使用协程（`SupervisorJob` + `Dispatchers.IO`），可通过 `reconnectJob.cancel()` 取消。
 
+### 3.5 客户端状态分发：状态用 StateFlow，事件用 SharedFlow
+
+`RelayWebSocketManager` 向 UI 暴露三条 Flow。选型取决于"迟到的订阅者要不要拿到最近一条"，
+而不是"哪个写起来短"：
+
+| Flow | 类型 | 理由 |
+|:-----|:-----|:-----|
+| `connectionState` | `StateFlow` | 连接状态是"当前状态"，天然有初始值 `Disconnected` |
+| `peerLocation` | `SharedFlow(replay = 1)` | 位置是事件流，没有"空位置"这个初始值 |
+| `pairingStatus` | `SharedFlow(replay = 1)` | 同上；且不能放一个占位值，否则会触发业务逻辑 |
+
+> ⚠️ **不要用 `Channel(CONFLATED).receiveAsFlow()` 做这些。**
+> `receiveAsFlow()` 的元素**被取走就消失**：一个订阅者收掉之后，后来的订阅者什么也看不到。
+> 二维码页收掉 `Connected` 之后，指南针页再订阅只会停在初始值 `Disconnected`
+> ——界面显示"连接已断开"而 socket 其实活着。这类 bug 只在"同一进程内两个页面先后订阅
+> 同一个单例"时出现，单看任何一个页面都复现不了。
+
+`replay = 1` 的代价是**上一次连接的状态会留在缓存里**。孩子端断开后重新扫码时，
+新的订阅一上来就会收到上一条 `DISCONNECTED`，于是一次全新的尝试开局就报错。
+因此 `connect()` 真正发起连接前要 `resetReplayCache()`——配对状态只属于当前这次连接。
+
+同理，孩子端的扫码入口可能被调用多次（断开后允许重扫），订阅要用一个 `Job` 接管，
+不能每次新起一个叠上去。
+
+### 3.6 配对状态才是跳转依据
+
+`ConnectionState.Connected` 只说明**自己的 socket 打开了**。孩子还没扫码时，
+服务端对家长回的仍然是 `PAIRING_STATUS(status = "WAITING")`。因此：
+
+- 家长端二维码页、孩子端扫码页的自动跳转，判据只能是 `PAIRING_STATUS == PAIRED`
+- 连接状态只用于显示"正在建立连接... / 连接出错"这类自己这一侧的状态
+- `PairingStatus.fromWire()` 对未知值一律按 `WAITING` 处理：宁可多等，也不要误跳
+
+同理，`SyncRepository.connect()` 是 `suspend` 函数，它返回时 socket 可能还没 `onOpen`，
+更不能说明对端在不在线——不能拿它的返回当作配对成功的信号。
+
 ---
 
 ## 4. 核心算法设计
@@ -376,6 +412,14 @@ App 启动
   └─ 孩子已配对 → ChildActiveScreen               │
                    └─ 停止共享 → 清除数据 → ──────┘
 ```
+
+> ⚠️ **起始路由是"进程启动时该落在哪页"的一次性决定，不是可观察状态。**
+> `NavHost` 的 `startDestination` **只在建图时生效**：挂上去之后再改它，不会把用户带到
+> 已配对的那一页（表现为冷启动回到角色选择页）；而反复改则会让 NavHost 重建，
+> `QrGenerationViewModel` 随之重建并生成新的 sessionId——孩子扫到的码随即失效。
+> 所以 `StartupViewModel` 用 `combine(...).first()` 读一次就定下来，
+> 会话中途的 DataStore 写入（选角色、保存配对、`clearAll`）都不该回头改它。
+> `MainActivity` 在路由决定前显示加载态，避免这几毫秒闪一下空白。
 
 ### 8.2 指南针组件
 

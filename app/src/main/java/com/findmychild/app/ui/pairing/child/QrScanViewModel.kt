@@ -3,6 +3,7 @@ package com.findmychild.app.ui.pairing.child
 import androidx.camera.core.ImageProxy
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.findmychild.app.domain.model.PairingStatus
 import com.findmychild.app.domain.model.UserRole
 import com.findmychild.app.domain.repository.PairingRepository
 import com.findmychild.app.domain.repository.SettingsRepository
@@ -12,6 +13,7 @@ import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,8 +31,15 @@ class QrScanViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(QrScanUiState())
     val uiState: StateFlow<QrScanUiState> = _uiState.asStateFlow()
 
+    /** 服务端下发的配对状态；PAIRED 才算真的连上对方 */
+    private val _pairingStatus = MutableStateFlow<PairingStatus?>(null)
+    val pairingStatus: StateFlow<PairingStatus?> = _pairingStatus.asStateFlow()
+
     private var hasScanned = false
     private val qrReader = QRCodeReader()
+
+    /** 配对状态订阅。断开后允许重新扫，那时要换一个新订阅，不能叠在上面 */
+    private var pairingStatusJob: Job? = null
 
     fun startScanning() {
         _uiState.value = _uiState.value.copy(isScanning = true)
@@ -40,6 +49,8 @@ class QrScanViewModel @Inject constructor(
      * 用户取消配对时调用：断开 WebSocket 连接并清除本地状态。
      */
     fun cancelPairing() {
+        pairingStatusJob?.cancel()
+        pairingStatusJob = null
         viewModelScope.launch {
             syncRepository.disconnect()
             settingsRepository.clearAll()
@@ -100,10 +111,31 @@ class QrScanViewModel @Inject constructor(
                 val pairingInfo = result.getOrThrow()
                 settingsRepository.savePairingInfo(pairingInfo)
 
-                // 建立 WebSocket 连接
+                // 建立 WebSocket 连接，等服务端确认双方都在线
                 syncRepository.connect(sessionId, UserRole.CHILD)
 
-                _uiState.value = _uiState.value.copy(isConnected = true, isConnecting = false)
+                pairingStatusJob?.cancel()
+                pairingStatusJob = launch {
+                    syncRepository.observePairingStatus().collect { status ->
+                        _pairingStatus.value = status
+                        when (status) {
+                            PairingStatus.PAIRED ->
+                                _uiState.value = _uiState.value.copy(isConnecting = false)
+
+                            PairingStatus.DISCONNECTED -> {
+                                // 家长掉线了，允许重新扫
+                                _uiState.value = _uiState.value.copy(
+                                    isConnecting = false,
+                                    errorMessage = "家长设备已断开，请重新扫描"
+                                )
+                                hasScanned = false
+                            }
+
+                            // 自己注册上了、对方还没来，继续转圈
+                            PairingStatus.WAITING -> Unit
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isConnecting = false,
@@ -119,6 +151,5 @@ class QrScanViewModel @Inject constructor(
 data class QrScanUiState(
     val isScanning: Boolean = false,
     val isConnecting: Boolean = false,
-    val isConnected: Boolean = false,
     val errorMessage: String? = null
 )

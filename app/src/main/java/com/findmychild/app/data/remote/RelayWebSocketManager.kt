@@ -7,17 +7,22 @@ import com.findmychild.app.data.remote.dto.RegisterMessage
 import com.findmychild.app.data.remote.dto.LocationUpdateDto
 import com.findmychild.app.domain.model.ConnectionState
 import com.findmychild.app.domain.model.LocationData
+import com.findmychild.app.domain.model.PairingStatus
 import com.findmychild.app.domain.model.UserRole
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -34,7 +39,7 @@ import kotlin.math.min
 
 /**
  * WebSocket 连接管理。
- * 使用 OkHttp 原生 WebSocket，通过 Channel 封装为 Flow。
+ * 使用 OkHttp 原生 WebSocket，通过 Flow 暴露连接状态、对端位置与配对状态。
  * 重连采用协程实现（delay + SupervisorJob），可取消、线程安全。
  */
 @Singleton
@@ -56,18 +61,22 @@ class RelayWebSocketManager @Inject constructor(
     private val reconnectScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var reconnectJob: Job? = null
 
-    private val connectionStateChannel = Channel<ConnectionState>(Channel.CONFLATED)
-    private val peerLocationChannel = Channel<LocationData>(Channel.CONFLATED)
-    private val pairingStatusChannel = Channel<PairingStatusDto>(Channel.CONFLATED)
+    // 这三项都是"当前状态"，不是一次性事件。
+    // 早期用 Channel(CONFLATED).receiveAsFlow()：元素被某个订阅者取走就消失，
+    // 二维码页收掉 Connected 之后，指南针页再订阅只会停在初始值 Disconnected
+    // ——界面显示"连接已断开"而 socket 其实活着。换成带当前值/重放的 Flow 后，
+    // 每个订阅者一上来就能拿到最新状态。
+    private val _connectionState =
+        MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
+    val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
-    /** 连接状态 Flow */
-    val connectionState: Flow<ConnectionState> = connectionStateChannel.receiveAsFlow()
+    // 位置和配对状态没有"空"的初始值，用 replay=1 的 SharedFlow：
+    // 迟到的订阅者能补上最近一条，但不会因为一个占位 null 触发业务逻辑。
+    private val _peerLocation = MutableSharedFlow<LocationData>(replay = 1)
+    val peerLocation: SharedFlow<LocationData> = _peerLocation.asSharedFlow()
 
-    /** 对端位置 Flow */
-    val peerLocation: Flow<LocationData> = peerLocationChannel.receiveAsFlow()
-
-    /** 配对状态 Flow */
-    val pairingStatus: Flow<PairingStatusDto> = pairingStatusChannel.receiveAsFlow()
+    private val _pairingStatus = MutableSharedFlow<PairingStatus>(replay = 1)
+    val pairingStatus: SharedFlow<PairingStatus> = _pairingStatus.asSharedFlow()
 
     /** 建立 WebSocket 连接 */
     suspend fun connect(sessionId: String, role: UserRole) = mutex.withLock {
@@ -88,11 +97,16 @@ class RelayWebSocketManager @Inject constructor(
         reconnectJob?.cancel()
         reconnectJob = null
 
+        // 上一次尝试留下的配对状态不该被这次复用：孩子端断开后重新扫码时，
+        // replay 里的 DISCONNECTED 会让新的一次尝试一上来就报"家长设备已断开"。
+        // 连接状态同理，只是它本来就会被下面的 Connecting 覆盖。
+        _pairingStatus.resetReplayCache()
+
         // 从 DataStore 读取最新服务器地址
         val url = relayConfig.wsUrlFlow.first()
         relayConfig.updateCachedUrl(url)
 
-        connectionStateChannel.send(ConnectionState.Connecting)
+        _connectionState.value = ConnectionState.Connecting
 
         val request = Request.Builder()
             .url(relayConfig.wsUrl)
@@ -101,7 +115,7 @@ class RelayWebSocketManager @Inject constructor(
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 isOpen = true
-                connectionStateChannel.trySend(ConnectionState.Connected)
+                _connectionState.value = ConnectionState.Connected
                 reconnectAttempt = 0
 
                 // 发送注册消息
@@ -121,13 +135,13 @@ class RelayWebSocketManager @Inject constructor(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 isOpen = false
-                connectionStateChannel.trySend(ConnectionState.Disconnected)
+                _connectionState.value = ConnectionState.Disconnected
                 scheduleReconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 isOpen = false
-                connectionStateChannel.trySend(ConnectionState.Error(t.message ?: "连接失败"))
+                _connectionState.value = ConnectionState.Error(t.message ?: "连接失败")
                 scheduleReconnect()
             }
         }
@@ -160,7 +174,7 @@ class RelayWebSocketManager @Inject constructor(
         isOpen = false
         webSocket?.close(1000, "User disconnected")
         webSocket = null
-        connectionStateChannel.trySend(ConnectionState.Disconnected)
+        _connectionState.value = ConnectionState.Disconnected
     }
 
     // ===== Private =====
@@ -174,12 +188,12 @@ class RelayWebSocketManager @Inject constructor(
             when (type) {
                 "PAIRING_STATUS" -> {
                     val msg = moshi.adapter(PairingStatusDto::class.java).fromJson(text)
-                    msg?.let { pairingStatusChannel.trySend(it) }
+                    msg?.let { _pairingStatus.tryEmit(PairingStatus.fromWire(it.status)) }
                 }
                 "PEER_LOCATION" -> {
                     val msg = moshi.adapter(PeerLocationDto::class.java).fromJson(text)
                     msg?.let {
-                        peerLocationChannel.trySend(
+                        _peerLocation.tryEmit(
                             LocationData(
                                 latitude = it.latitude,
                                 longitude = it.longitude,
@@ -192,7 +206,7 @@ class RelayWebSocketManager @Inject constructor(
                 "ERROR" -> {
                     val msg = moshi.adapter(ErrorDto::class.java).fromJson(text)
                     msg?.let {
-                        connectionStateChannel.trySend(ConnectionState.Error(it.message))
+                        _connectionState.value = ConnectionState.Error(it.message)
                     }
                 }
             }

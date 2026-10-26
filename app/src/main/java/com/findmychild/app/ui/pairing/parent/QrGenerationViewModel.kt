@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.findmychild.app.domain.model.ConnectionState
+import com.findmychild.app.domain.model.PairingStatus
 import com.findmychild.app.domain.model.UserRole
 import com.findmychild.app.domain.repository.PairingRepository
 import com.findmychild.app.domain.repository.SettingsRepository
@@ -29,6 +30,10 @@ class QrGenerationViewModel @Inject constructor(
 
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+
+    /** null = 还没收到服务端的配对状态 */
+    private val _pairingStatus = MutableStateFlow<PairingStatus?>(null)
+    val pairingStatus: StateFlow<PairingStatus?> = _pairingStatus.asStateFlow()
 
     init {
         generateSession()
@@ -58,8 +63,14 @@ class QrGenerationViewModel @Inject constructor(
                 }
             }
 
-            // 监听 WebSocket 配对状态消息
-            // 配对成功后自动跳转由 Screen 层处理
+            // 配对成功与否只能看 PAIRING_STATUS。连接状态只代表自己的 socket 通了，
+            // 孩子还没扫码时服务端回的是 WAITING——早期版本拿"已连接"当"已配对"，
+            // 家长二维码一闪而过就被带去指南针页，孩子根本扫不到。
+            launch {
+                syncRepository.observePairingStatus().collect { status ->
+                    _pairingStatus.value = status
+                }
+            }
         }
     }
 

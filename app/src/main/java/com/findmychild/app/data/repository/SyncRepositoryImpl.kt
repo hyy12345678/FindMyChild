@@ -3,10 +3,10 @@ package com.findmychild.app.data.repository
 import com.findmychild.app.data.remote.RelayWebSocketManager
 import com.findmychild.app.domain.model.ConnectionState
 import com.findmychild.app.domain.model.LocationData
+import com.findmychild.app.domain.model.PairingStatus
 import com.findmychild.app.domain.model.UserRole
 import com.findmychild.app.domain.repository.SyncRepository
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,4 +35,7 @@ class SyncRepositoryImpl @Inject constructor(
 
     override fun observeConnectionState(): Flow<ConnectionState> =
         webSocketManager.connectionState
+
+    override fun observePairingStatus(): Flow<PairingStatus> =
+        webSocketManager.pairingStatus
 }

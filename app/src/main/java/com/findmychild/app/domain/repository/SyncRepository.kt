@@ -2,6 +2,7 @@ package com.findmychild.app.domain.repository
 
 import com.findmychild.app.domain.model.ConnectionState
 import com.findmychild.app.domain.model.LocationData
+import com.findmychild.app.domain.model.PairingStatus
 import com.findmychild.app.domain.model.UserRole
 import kotlinx.coroutines.flow.Flow
 
@@ -26,4 +27,12 @@ interface SyncRepository {
 
     /** 观察连接状态变化 */
     fun observeConnectionState(): Flow<ConnectionState>
+
+    /**
+     * 观察配对状态。
+     *
+     * 判断"对方真的来了吗"只能看这个；连接状态只说明自己的 socket 通了，
+     * 对端未到时服务端回的是 WAITING。
+     */
+    fun observePairingStatus(): Flow<PairingStatus>
 }

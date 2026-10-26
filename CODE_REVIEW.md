@@ -1,5 +1,20 @@
 # FindMyChild 代码走读报告
 
+> 📌 **本文是对 0.1.0-dev 阶段代码的快照式走读**，写于后续修复之前。文中引用的行号、
+> 代码片段和"当前行为"描述多数已过期——其中的问题基本都已在 v0.1.1-dev 及之后修复。
+> 请把它当作"当时发现了什么"的历史记录，**不要**用它推断现在的代码状态；
+> 现行状态以源码、[CHANGELOG.md](CHANGELOG.md) 和
+> [doc/tracking/TASK_TRACKING.md](doc/tracking/TASK_TRACKING.md) 为准。
+>
+> 已知与现状不符的段落（节选）：
+>
+> - §配对流程走读：`LaunchedEffect(connectionState)` + `delay(500)` 的跳转方式、
+>   `QrScanUiState(isConnected = true)`——两者都已在 v0.2.1-dev 改为由
+>   `PAIRING_STATUS == PAIRED` 触发，`isConnected` 字段已删除
+> - §RelayWebSocketManager：`peerLocationChannel` / `pairingStatusChannel` /
+>   `connectionStateChannel` 已改为 `SharedFlow` / `StateFlow`
+>   （`Channel(CONFLATED).receiveAsFlow()` 是单消费者，见 DESIGN §3.5）
+
 ## 一、整体评价
 
 项目结构清晰，Clean Architecture + MVVM 分层到位，Domain 层零 Android 依赖可测试性好。作为 0.1.0-dev 阶段，功能骨架完整，但从"可用于紧急寻人"的标准来看，存在若干**必须修复的 Bug**和**安全隐患**。

@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.findmychild.app.domain.model.PairingStatus
 import java.util.concurrent.Executors
 
 @Composable
@@ -57,6 +58,7 @@ fun QrScanScreen(
     viewModel: QrScanViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val pairingStatus by viewModel.pairingStatus.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -87,10 +89,11 @@ fun QrScanScreen(
         }
     }
 
-    // 配对成功后跳转
-    LaunchedEffect(uiState.isConnected) {
-        if (uiState.isConnected) {
-            kotlinx.coroutines.delay(500)
+    // 服务端确认双方都在线后才跳转。
+    // connect() 只是发起连接，它返回时 socket 可能还没打开，更不能说明家长在不在线——
+    // 家长没连上时服务端回的是 WAITING。
+    LaunchedEffect(pairingStatus) {
+        if (pairingStatus == PairingStatus.PAIRED) {
             onConnected()
         }
     }
