@@ -32,6 +32,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.findmychild.app.data.sensor.LocationService
 import com.findmychild.app.domain.model.ConnectionState
+import com.findmychild.app.domain.model.PairingStatus
 import com.findmychild.app.domain.repository.SettingsRepository
 import com.findmychild.app.domain.repository.SyncRepository
 import com.findmychild.app.ui.permission.LocationPermissionGate
@@ -59,8 +60,13 @@ class ChildActiveViewModel @Inject constructor(
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
+    /** null = 还没收到服务端的配对状态 */
+    private val _pairingStatus = MutableStateFlow<PairingStatus?>(null)
+    val pairingStatus: StateFlow<PairingStatus?> = _pairingStatus.asStateFlow()
+
     init {
         observeConnectionState()
+        observePairingStatus()
     }
 
     /**
@@ -83,6 +89,25 @@ class ChildActiveViewModel @Inject constructor(
         viewModelScope.launch {
             syncRepository.observeConnectionState().collect { state ->
                 _connectionState.value = state
+            }
+        }
+    }
+
+    /**
+     * 观察配对状态。
+     *
+     * 家长端已经因为"只看连接状态"错过两次（`QrGenerationScreen` 拿 Connected 当已配对、
+     * `CompassScreen` 在孩子离开后仍显示"已连接"），这里是同一个错的第三处。
+     * 家长离开时孩子这一侧的 socket 毫发无损，连接状态一直是 Connected，
+     * 服务端发来的 `DISCONNECTED` 是唯一能看出"对方走了"的信号。
+     *
+     * 不观察它的代价不只是文案难看：孩子会一直以为家长在看，
+     * GPS 和前台服务也就一直往一个没有接收方的中继上报位置——既耗电，也没必要地传位置。
+     */
+    private fun observePairingStatus() {
+        viewModelScope.launch {
+            syncRepository.observePairingStatus().collect { status ->
+                _pairingStatus.value = status
             }
         }
     }
@@ -132,6 +157,7 @@ fun ChildActiveScreen(
 ) {
     val permission = rememberLocationPermissionState()
     val connectionState by viewModel.connectionState.collectAsState()
+    val pairingStatus by viewModel.pairingStatus.collectAsState()
 
     // 冷启动时恢复连接（正常扫码进入时连接已由 QrScanViewModel 建好，重复 connect 无副作用）
     LaunchedEffect(Unit) {
@@ -165,7 +191,8 @@ fun ChildActiveScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "位置共享中",
+                // 对方走后还写"位置共享中"是假话：没有人接收，位置也不该再往外传
+                text = if (pairingStatus == PairingStatus.DISCONNECTED) "对方已离开" else "位置共享中",
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -173,7 +200,16 @@ fun ChildActiveScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "家长正在通过指南针查看你的位置\n你可以将应用切换到后台\n位置会持续共享",
+                text = when (pairingStatus) {
+                    PairingStatus.DISCONNECTED ->
+                        "家长已停止共享\n你的位置此刻没有在共享\n可以停止共享退出，或等待对方回来"
+
+                    PairingStatus.WAITING ->
+                        "等待家长连接...\n连上之后家长就能看到你的位置"
+
+                    else ->
+                        "家长正在通过指南针查看你的位置\n你可以将应用切换到后台\n位置会持续共享"
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
@@ -181,16 +217,25 @@ fun ChildActiveScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // 连接状态：断开时不能还显示"正在上报"
-            val (statusText, statusColor) = when (connectionState) {
-                is ConnectionState.Connected ->
+            // 配对状态优先：它才说明对方在不在。连接状态只代表自己这一侧的 socket——
+            // 家长离开时它毫发无损，只看它会让孩子一直以为家长在看。
+            val (statusText, statusColor) = when (pairingStatus) {
+                PairingStatus.PAIRED ->
                     "● 正在后台持续上报位置" to MaterialTheme.colorScheme.primary
-                is ConnectionState.Connecting ->
-                    "● 正在连接..." to MaterialTheme.colorScheme.secondary
-                is ConnectionState.Error ->
-                    "● 连接出错，正在重连" to MaterialTheme.colorScheme.error
-                is ConnectionState.Disconnected ->
-                    "● 连接已断开" to MaterialTheme.colorScheme.error
+                PairingStatus.WAITING ->
+                    "● 等待家长连接..." to MaterialTheme.colorScheme.secondary
+                PairingStatus.DISCONNECTED ->
+                    "● 对方已断开，位置未在共享" to MaterialTheme.colorScheme.error
+                null -> when (connectionState) {
+                    is ConnectionState.Connected ->
+                        "● 正在后台持续上报位置" to MaterialTheme.colorScheme.primary
+                    is ConnectionState.Connecting ->
+                        "● 正在连接..." to MaterialTheme.colorScheme.secondary
+                    is ConnectionState.Error ->
+                        "● 连接出错，正在重连" to MaterialTheme.colorScheme.error
+                    is ConnectionState.Disconnected ->
+                        "● 连接已断开" to MaterialTheme.colorScheme.error
+                }
             }
             Text(
                 text = statusText,
