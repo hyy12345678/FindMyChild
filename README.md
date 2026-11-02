@@ -8,7 +8,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material3-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Changelog](https://img.shields.io/badge/Changelog-0.2.0--dev-blue.svg)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/Changelog-0.2.1--dev-blue.svg)](CHANGELOG.md)
 [![Status](https://img.shields.io/badge/状态-开发中-orange.svg)]()
 
 </div>
@@ -259,6 +259,7 @@ FindMyChild/
 - [x] WebSocket 中继服务器（Ktor + Netty）
 - [x] 后台前台定位服务
 - [x] 深色模式支持
+- [x] 单元测试与集成测试（149 例，CI 3 个 Job 全绿）
 
 ### 已修复（0.1.1-dev）
 
@@ -297,16 +298,13 @@ FindMyChild/
 
 ### 已修复（0.2.1-dev）
 
-> 真机联调暴露的三个串联问题。详见 [CHANGELOG.md](CHANGELOG.md)。
+> 真机联调暴露的四个问题，前三项串起来是一次完整的事故。详见 [CHANGELOG.md](CHANGELOG.md)。
 
 - [x] **拿"已连接"当"已配对"，二维码一闪而过**（P0）——`ConnectionState.Connected` 只代表自己的 socket 通了，孩子没扫码时服务端回的是 `WAITING`；跳转改由 `PAIRING_STATUS` 的 `PAIRED` 触发
 - [x] **`Channel(CONFLATED).receiveAsFlow()` 是单消费者**（P0）——元素被取走就消失，指南针页后订阅只能停在初始值 `Disconnected`，界面显示"连接已断开"而 socket 其实活着；改为 `StateFlow` / `SharedFlow(replay = 1)`
 - [x] **`startDestination` 在会话中途被反复改写**（P1）——任何 DataStore 写入都重算起始路由，导致 NavHost 重建、sessionId 重新生成、孩子扫到的码失效；改为一次性决定
 - [x] **指南针页也不观察配对状态**（P1）——双端联调时发现：孩子离开后家长端仍显示"已连接"，因为 `CompassViewModel` 只看自己的连接状态；与上一条同源，一并修复
-
-### 开发中
-
-- [ ] 单元测试与集成测试（146 个用例，CI 3 个 Job 全绿）
+- [x] **孩子端也不观察配对状态**（P1）——家长离开后孩子端照样显示"位置共享中"、指示灯还是"正在后台持续上报位置"，`ChildActiveViewModel` 是同一个错误的第三处；已改为配对状态优先的三态文案
 
 ### 计划中
 

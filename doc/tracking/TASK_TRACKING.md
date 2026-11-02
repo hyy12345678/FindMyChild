@@ -1,6 +1,6 @@
 # 任务执行跟踪 — FindMyChild
 
-> 版本: 0.2.1-dev | 最后更新: 2026-10-26
+> 版本: 0.2.1-dev | 最后更新: 2026-11-02
 
 ---
 
@@ -161,14 +161,15 @@
 | `RelayServerE2ETest.kt` | 5 | relay-server (端到端通信) |
 | `CompassViewTest.kt` | 7 | UI (CompassView 渲染) |
 | `LocationPermissionTest.kt` | 7 | UI (定位权限判据 + 权限门三态) |
-| `ChildActiveViewModelTest.kt` | 5 | UI (冷启动重连 / 连接状态) |
+| `ChildActiveViewModelTest.kt` | 8 | UI (冷启动重连 / 连接状态 / 配对状态三态) |
 | `CompassViewModelTest.kt` | 5 | UI (ensureConnected / 配对状态订阅) |
 | `StartupViewModelTest.kt` | 8 | UI (起始路由决策 + 会话中途不改变路由) |
 | `QrGenerationScreenTest.kt` | 4 | UI (配对状态驱动跳转) |
-| **合计** | **146** | — |
+| **合计** | **149** | — |
 
 > ⚠️ 0.2.0-dev 首次记录时写的是 87 个用例，那个数字没有跑通过——其中 15 个从未成功执行过
-> （见第 10 节）。上表是 2026-10-23 修复后重新统计的真实值。
+> （见第 10 节）。上表是 2026-10-23 修复后重新统计的真实值；2026-11-02 随 §11.8
+又增 3 例（`ChildActiveViewModelTest` 5 → 8），合计 149。
 
 ### 4.4 代码变更
 
@@ -253,6 +254,7 @@
 | 2026-10-26 | 修复 `Channel(CONFLATED).receiveAsFlow()` 单消费者问题：三条 Flow 改 `StateFlow` / `SharedFlow(replay = 1)`，指南针页不再误显"连接已断开" | Claude |
 | 2026-10-26 | 修复 `startDestination` 会话中途被改写：`StartupViewModel` 改为 `.first()` 一次性决定，`MainActivity` 加加载态；测试数 125 → 144 | Claude |
 | 2026-10-26 | 双端真机联调（模拟器当家长 + 真机当孩子）跑通完整配对与位置链路；顺带发现并修复指南针页不观察配对状态、孩子离开后仍显示"已连接" | Claude |
+| 2026-11-02 | 孩子端也改看配对状态（同一个错误的第三处，未纳入编号任务，见 §11.8）；测试数 146 → 149 | Claude |
 
 ---
 
@@ -417,7 +419,7 @@ CI: 3 jobs 全绿（7dd9b93、c423c77 两次运行均 success）
 ### 11.5 验证
 
 ```
-146 tests, 0 failed   （app 124 + relay-server 22）
+149 tests, 0 failed   （app 127 + relay-server 22）
 真机: 家长端停在二维码页，状态"已连接，等待小朋友扫码..."，持续 15s 不跳走（此前约 500ms 即跳走）
 ```
 
@@ -455,3 +457,27 @@ CI: 3 jobs 全绿（7dd9b93、c423c77 两次运行均 success）
 > 联调时真机有锁屏密码，无法解锁操作界面，因此用 `force-stop` 释放孩子端 slot。
 > 位置数据由临时的 WebSocket 客户端顶替孩子端上报（真机室内取不到 GPS fix，
 > 但 App 确实已按 HIGH_ACCURACY / 5s 注册，服务也在跑）。
+
+### 11.8 孩子端也不观察配对状态（P1，2026-11-02 提交 `d8ac9cb`）
+
+§11.7 修掉家长端指南针页之后，孩子端是同一个错误的第三处，也是迄今最后一处。
+
+**现象**：家长离开后，孩子端状态页依旧显示"位置共享中"，指示灯写着
+"● 正在后台持续上报位置"。
+
+**根因**：`ChildActiveViewModel` 只 `observeConnectionState()`。家长离开时孩子这一侧的
+socket 毫发无损，连接状态一直是 `Connected`；服务端发来的 `DISCONNECTED` 是唯一能看出
+"对方走了"的信号，却没有订阅者。与 §11.1、§11.7 同源——把"自己这一侧的连接状态"
+当成"对方在不在"。
+
+**修复**：`ChildActiveViewModel` 在 `init` 里订阅 `observePairingStatus()`（不放进
+`startSharing()` 之前的那道定位权限门，配对状态与定位权限无关），文案与指示灯改为配对状态
+优先的 PAIRED / WAITING / DISCONNECTED 三态，`null`（服务端还没说话）时才回退到连接状态。
+新增 3 条测试，其中一条是回归护栏：家长离开时 `pairingStatus` 为 `DISCONNECTED` 而
+`connectionState` 仍为 `Connected`，两者不得互相干扰。
+
+> ⚠️ **未闭环的一点**：`ChildActiveScreen` 的注释写着"GPS 和前台服务也就一直往一个没有
+> 接收方的中继上报位置——既耗电"，但本次只改了文案，`LocationService` 的启停仍只由
+> `permission.granted` 决定，家长离开后上报照旧。该做的是：`DISCONNECTED` 时
+> `stopService`，重新 `PAIRED` 再拉起。
+

@@ -65,6 +65,21 @@
 修复：`CompassViewModel` 在 `init` 里订阅配对状态（不放 `startObserving()`——那个由定位
 权限就绪触发，而配对状态与定位权限无关），`ConnectionStatusBar` 改为配对状态优先。
 
+#### P1 — 孩子端同样不观察配对状态，家长离开后仍显示"位置共享中"
+
+`CompassViewModel` 修完之后，孩子端是同一个错误的第三处：家长离开时孩子这一侧的 socket
+毫发无损，`connectionState` 一直是 `Connected`，服务端发来的 `DISCONNECTED` 是唯一能
+看出"对方走了"的信号，而 `ChildActiveViewModel` 没有订阅它。于是孩子端一直显示
+"位置共享中"，指示灯写着"● 正在后台持续上报位置"。
+
+修复：`ChildActiveViewModel` 在 `init` 里订阅 `observePairingStatus()`——不放进
+`startSharing()` 之前的那道定位权限门，配对状态与定位权限无关；页面文案与指示灯改为
+配对状态优先的 PAIRED / WAITING / DISCONNECTED 三态，尚未收到服务端消息时（`null`）
+才回退到连接状态。
+
+> ⚠️ 本次只改了文案。`LocationService` 的启停仍只由定位权限决定，家长离开后位置照旧往
+> 没有接收方的中继上报——`ChildActiveScreen` 的注释已经点了这个问题，实现尚未跟上。
+
 ### ✅ 新增测试覆盖
 
 - `StartupViewModelTest`（8 例）：五种角色 × 配对状态的起始路由，外加两条回归护栏——
@@ -76,11 +91,14 @@
   重新建连不继承上一次的配对状态
 - `CompassViewModelTest` 补 2 例：配对状态在 `init` 里就订阅（不等定位权限）；
   `disconnect` 清空配对状态
+- `ChildActiveViewModelTest` 补 3 例：配对状态在 `init` 里就订阅（不等定位权限）；
+  家长离开时 `pairingStatus == DISCONNECTED` 而 `connectionState` 仍为 `Connected`，两者互不干扰；
+  服务端始终沉默时状态保持 `null`，不凭猜测显示"对方已断开"
 
 ### 📊 验证
 
 ```
-测试: 146 passed, 0 failed（app 124 + relay-server 22）
+测试: 149 passed, 0 failed（app 127 + relay-server 22）
 真机: 家长端停在二维码页，状态"已连接，等待小朋友扫码..."，持续 15s 不跳走
 双端: 模拟器当家长 + 真机当孩子，扫码后双方正确跳转；位置链路与指南针几何正确
        （孩子在正东 ~1.1km → 显示"1.0 公里 / 正东方向"，箭头指向右、N 在顶部）
